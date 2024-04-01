@@ -50,8 +50,10 @@ func main() {
 	}
 
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
+	ncontent = strings.ReplaceAll(ncontent, "`<!-- wp:heading -->`", "<!-- post2epub:section-end --><!-- post2epub:section-start --><!-- wp:heading -->")
+	ncontent = strings.Replace(ncontent, "`<!-- post2epub:section-end -->`", "", 1)
 
-	re := regexp.MustCompile(`(?s)<!--\s*wp:heading\s*-->(.*?)<!--\s*wp:heading\s*-->`)
+	re := regexp.MustCompile(`(?s)<!-- post2epub:section-start -->(.*?)<!-- post2epub:section-end -->`)
 	matches := re.FindAllStringSubmatch(ncontent, -1)
 	i := 0
 	for _, match := range matches {
