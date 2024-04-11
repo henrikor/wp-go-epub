@@ -48,15 +48,12 @@ func main() {
 		log.Fatal(err)
 	}
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
-	ncontent = strings.ReplaceAll(ncontent, "<!-- wp:heading -->", "<!-- post2epub:section-end -->\n<!-- post2epub:section-start -->\n<!-- wp:heading -->")
-	ncontent = strings.Replace(ncontent, "<!-- post2epub:section-end -->", "", 1)
 
-	re := regexp.MustCompile(`(?s)<!-- wp:heading -->(.*?)<!-- wp:heading -->`)
-	matches := re.FindAllStringSubmatch(ncontent, -1)
-
+	reh2 := regexp.MustCompile(`(?s)<!-- wp:heading -->(.*?)<!-- wp:heading -->`)
+	matchesh2 := reh2.FindAllStringSubmatch(ncontent, -1)
 	// Finn siste del:
-	re = regexp.MustCompile(`(?s)<!--\s*wp:heading\s*-->`)
-	lastIndex := re.FindAllStringIndex(ncontent, -1)
+	reh2 = regexp.MustCompile(`(?s)<!--\s*wp:heading\s*-->`)
+	lastIndex := reh2.FindAllStringIndex(ncontent, -1)
 
 	color.Yellow("\n\n--------------------------------------------------------\n\n")
 
@@ -72,23 +69,29 @@ func main() {
 	color.Yellow("\n\n--------------------------------------------------------\n\n")
 	var contentAfterLastMatchSlice []string
 	contentAfterLastMatchSlice = append(contentAfterLastMatchSlice, contentAfterLastMatch)
-	matches = append(matches, contentAfterLastMatchSlice)
-	fmt.Printf("Matches lengde: %v", len(matches))
+	matchesh2 = append(matchesh2, contentAfterLastMatchSlice)
+	fmt.Printf("Matches lengde: %v", len(matchesh2))
 	// os.Exit(0)
 
 	// reh2 := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
 	// reh3 := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
-	for i, match := range matches {
+	for i, match := range matchesh2 {
+
+		color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
+		color.Yellow("$1: %s", `$1`)
+		color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
 		color.Yellow("\n\n======================================================\n\n")
 		color.Yellow("Prints Index: %d", i)
 		color.Yellow("\n\n======================================================\n\n")
-		for _, x := range match {
-			color.Yellow("\n\n======================================================\n\n")
-			color.Yellow("Prints x: %d", i)
-			color.Yellow("\n\n======================================================\n\n")
 
-			fmt.Printf("x: %v", x)
-		}
+		fmt.Println(match[len(match)-1])
+		// for j, x := range match {
+		// 	color.Yellow("\n\n======================================================\n\n")
+		// 	color.Yellow("Prints j: %d", j)
+		// 	color.Yellow("\n\n======================================================\n\n")
+
+		// 	fmt.Printf("x:\n %v", x)
+		// }
 	}
 
 	// Write the EPUB
