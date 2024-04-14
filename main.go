@@ -73,9 +73,10 @@ func main() {
 	fmt.Printf("Matches lengde: %v", len(matchesh2))
 	// os.Exit(0)
 
-	// reh2 := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
+	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
 	// reh3 := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
 	for i, match := range matchesh2 {
+		txt := match[len(match)-1]
 
 		color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
 		color.Yellow("$1: %s", `$1`)
@@ -84,14 +85,10 @@ func main() {
 		color.Yellow("Prints Index: %d", i)
 		color.Yellow("\n\n======================================================\n\n")
 
-		fmt.Println(match[len(match)-1])
-		// for j, x := range match {
-		// 	color.Yellow("\n\n======================================================\n\n")
-		// 	color.Yellow("Prints j: %d", j)
-		// 	color.Yellow("\n\n======================================================\n\n")
+		h2 := reh2h.ReplaceAllString(txt, `$1`)
+		color.Yellow("H2 : %s", h2)
 
-		// 	fmt.Printf("x:\n %v", x)
-		// }
+		fmt.Println(txt)
 	}
 
 	// Write the EPUB
