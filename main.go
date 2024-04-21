@@ -16,13 +16,12 @@ import (
 
 func main() {
 	// Parse command line flags
-	// Check if required flags are provided
 	author, title, wpFile, epubFile, wpFolder, epubFolder := manageFlag()
 
 	// Create a new EPUB
 	e, err := epub.NewEpub(*title)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error creating EPUB: %v", err)
 	}
 	e.SetAuthor(*author)
 	e.SetTitle(*title)
@@ -34,46 +33,49 @@ func main() {
 	// Read the content of the file
 	content, err := ioutil.ReadFile(wpFilePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error reading file: %v", err)
 	}
+
+	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
+	// Find all occurrences of <!-- wp:heading -->
 	reh2 := regexp.MustCompile(`(?s)<!-- wp:heading -->(.*?)<!-- wp:heading -->`)
 	matchesh2 := reh2.FindAllStringSubmatch(ncontent, -1)
-	// Finn siste del:
-	reh2 = regexp.MustCompile(`(?s)<!--\s*wp:heading\s*-->`)
+
+	// Find the last occurrence of <!-- wp:heading -->
 	lastIndex := reh2.FindAllStringIndex(ncontent, -1)
 
 	color.Yellow("\n\n--------------------------------------------------------\n\n")
 
 	var contentAfterLastMatch string
 	if len(lastIndex) > 0 {
-		lastMatchIndex := lastIndex[len(lastIndex)-1][1]  // Slutten av siste forekomst av <!-- wp:heading -->
-		contentAfterLastMatch = ncontent[lastMatchIndex:] // Alt etter siste forekomst av <!-- wp:heading -->
-		// fmt.Println(contentAfterLastMatch)
-
+		lastMatchIndex := lastIndex[len(lastIndex)-1][1]  // End of last occurrence of <!-- wp:heading -->
+		contentAfterLastMatch = ncontent[lastMatchIndex:] // All content after last occurrence of <!-- wp:heading -->
 	} else {
-		fmt.Println("Ingen treff på <!-- wp:heading --> i teksten.")
+		fmt.Println("No matches found for <!-- wp:heading --> in the text.")
 	}
 	color.Yellow("\n\n--------------------------------------------------------\n\n")
-	var contentAfterLastMatchSlice []string
-	contentAfterLastMatchSlice = append(contentAfterLastMatchSlice, contentAfterLastMatch)
-	matchesh2 = append(matchesh2, contentAfterLastMatchSlice)
-	fmt.Printf("Matches lengde: %v", len(matchesh2))
-	// os.Exit(0)
 
+	// Append content after last match to matches slice
+	matchesh2 = append(matchesh2, []string{contentAfterLastMatch})
+
+	// Compile regex outside of loop for efficiency
 	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
-	// reh3 := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
+
+	// Loop through matches and process each one
 	for i, match := range matchesh2 {
 		fixh2(match, i, reh2h)
 	}
+
 	// Write the EPUB
 	err = e.Write(epubFilePath)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("Error writing EPUB: %v", err)
 	}
 	fmt.Println("EPUB created successfully.")
 }
+
 func fixh2(match []string, i int, reh2h *regexp.Regexp) {
 	txt := match[len(match)-1]
 
