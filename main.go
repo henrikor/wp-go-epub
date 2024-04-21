@@ -16,19 +16,8 @@ import (
 
 func main() {
 	// Parse command line flags
-	author := flag.String("author", "", "the author of the EPUB")
-	title := flag.String("title", "", "the title of the EPUB")
-	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
-	epubFile := flag.String("epubfile", "", "the name of the file to be added as a section")
-	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
-	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
-	flag.Parse()
-
 	// Check if required flags are provided
-	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
-		flag.PrintDefaults()
-		os.Exit(1)
-	}
+	author, title, wpFile, epubFile, wpFolder, epubFolder := manageFlag()
 
 	// Create a new EPUB
 	e, err := epub.NewEpub(*title)
@@ -76,25 +65,43 @@ func main() {
 	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
 	// reh3 := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
 	for i, match := range matchesh2 {
-		txt := match[len(match)-1]
-
-		color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
-		color.Yellow("$1: %s", `$1`)
-		color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
-		color.Yellow("\n\n======================================================\n\n")
-		color.Yellow("Prints Index: %d", i)
-		color.Yellow("\n\n======================================================\n\n")
-
-		h2 := reh2h.ReplaceAllString(txt, `$1`)
-		color.Yellow("H2 : %s", h2)
-
-		fmt.Println(txt)
+		fixh2(match, i, reh2h)
 	}
-
 	// Write the EPUB
 	err = e.Write(epubFilePath)
 	if err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("EPUB created successfully.")
+}
+func fixh2(match []string, i int, reh2h *regexp.Regexp) {
+	txt := match[len(match)-1]
+
+	color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
+	color.Yellow("$1: %s", `$1`)
+	color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
+	color.Yellow("\n\n======================================================\n\n")
+	color.Yellow("Prints Index: %d", i)
+	color.Yellow("\n\n======================================================\n\n")
+
+	h2 := reh2h.ReplaceAllString(txt, `$1`)
+	color.Yellow("H2 : %s", h2)
+
+	fmt.Println(txt)
+}
+
+func manageFlag() (*string, *string, *string, *string, *string, *string) {
+	author := flag.String("author", "", "the author of the EPUB")
+	title := flag.String("title", "", "the title of the EPUB")
+	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
+	epubFile := flag.String("epubfile", "", "the name of the file to be added as a section")
+	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
+	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
+	flag.Parse()
+
+	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+	return author, title, wpFile, epubFile, wpFolder, epubFolder
 }
