@@ -62,6 +62,7 @@ func main() {
 
 	// Compile regex outside of loop for efficiency
 	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
+	reh3h := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
 
 	// Loop through matches and process each one
 	for i, match := range matchesh2 {
@@ -78,13 +79,6 @@ func main() {
 
 func fixh2(match []string, i int, reh2h *regexp.Regexp) {
 	txt := match[len(match)-1]
-
-	color.Yellow("\n\n==///////////////////////////  FIX H2    //////////////////////////////////==\n\n")
-	color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
-	color.Yellow("\n\n======================================================\n\n")
-	color.Yellow("Prints Index: %d", i)
-	color.Yellow("\n\n======================================================\n\n")
-
 	// Find all matches for <h2>...</h2> and extract the content
 	submatches := reh2h.FindAllStringSubmatch(txt, -1)
 	for _, submatch := range submatches {
@@ -93,9 +87,21 @@ func fixh2(match []string, i int, reh2h *regexp.Regexp) {
 			color.Yellow("H2 content: %s", h2Content)
 		}
 	}
-
 	fmt.Println("h2 slutt")
+	fmt.Println(txt)
+}
 
+func fixh3(match []string, i int, reh3h *regexp.Regexp) {
+	txt := match[len(match)-1]
+	// Find all matches for <h2>...</h2> and extract the content
+	submatches := reh3h.FindAllStringSubmatch(txt, -1)
+	for _, submatch := range submatches {
+		if len(submatch) > 1 {
+			h2Content := submatch[1]
+			color.Yellow("H2 content: %s", h2Content)
+		}
+	}
+	fmt.Println("h2 slutt")
 	fmt.Println(txt)
 }
 
