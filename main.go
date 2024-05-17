@@ -1,63 +1,116 @@
 package main
 
 import (
+	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strings"
 
-	"github.com/PuerkitoBio/goquery"
+	"github.com/fatih/color"
+	"github.com/go-shiori/go-epub"
 )
 
 func main() {
-	inputHTML := "test.html"
+	// Parse command line flags
+	author, title, wpFile, epubFile, wpFolder, epubFolder := manageFlag()
 
-	file, err := os.Open(inputHTML)
+	// Create a new EPUB
+	e, err := epub.NewEpub(*title)
 	if err != nil {
-		fmt.Println("Error opening input file:", err)
-		return
+		log.Fatalf("Error creating EPUB: %v", err)
 	}
-	defer file.Close()
-	// Convert the designated charset HTML to utf-8 encoded HTML.
-	// `charset` being one of the charsets known by the iconv package.
-	// utfBody, err := iconv.NewReader(file, charset, "utf-8")
-	// if err != nil {
-	// 	// handler error
-	// }
-	// doc, err := goquery.NewDocumentFromReader(utfBody)
-	doc, err := goquery.NewDocumentFromReader(file)
+	e.SetAuthor(*author)
+	e.SetTitle(*title)
+
+	// Get the path of the file
+	wpFilePath := filepath.Join(*wpFolder, *wpFile)
+	epubFilePath := filepath.Join(*epubFolder, *epubFile)
+
+	// Read the content of the file
+	content, err := ioutil.ReadFile(wpFilePath)
 	if err != nil {
-		fmt.Println("Error parsing HTML:", err)
-		return
+		log.Fatalf("Error reading file: %v", err)
 	}
 
-	doc.Find("h2").Each(func(i int, s *goquery.Selection) {
-		// sectionTitle, err := s.Html()
-		// if err != nil {
-		// 	color.RedString("Err: %v", err)
-		// }
-		title := s.Closest("h2")
+	// Replace HTML entities
+	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
-		fmt.Println("-------------- title2 ----------------- \n" + title.Text())
-		// fmt.Println("-------------- SECTION ----------------- \n" + sectionTitle)
+	// Find all occurrences of <!-- wp:heading -->
+	reh2 := regexp.MustCompile(`(?s)<!-- wp:heading -->(.*?)<!-- wp:heading -->`)
+	matchesh2 := reh2.FindAllStringSubmatch(ncontent, -1)
 
-		s.NextUntil("h2").Filter("h3").Each(func(j int, s *goquery.Selection) {
-			// Print out the text of the h2 element
-			title := s.Closest("h3")
-			fmt.Println("-------------- title3 ----------------- \n" + title.Text())
+	// Find the last occurrence of <!-- wp:heading -->
+	lastIndex := reh2.FindAllStringIndex(ncontent, -1)
 
-			fmt.Println("h3 element text:", s.Prev().Text())
+	color.Yellow("\n\n--------------------------------------------------------\n\n")
 
-			// Now you can process h3 elements
-		})
+	var contentAfterLastMatch string
+	if len(lastIndex) > 0 {
+		lastMatchIndex := lastIndex[len(lastIndex)-1][1]  // End of last occurrence of <!-- wp:heading -->
+		contentAfterLastMatch = ncontent[lastMatchIndex:] // All content after last occurrence of <!-- wp:heading -->
+	} else {
+		fmt.Println("No matches found for <!-- wp:heading --> in the text.")
+	}
+	color.Yellow("\n\n--------------------------------------------------------\n\n")
 
-		// s.NextUntil("h2").Each(func(j int, s *goquery.Selection) {
-		// 	sub1 := s.Text()
-		// 	fmt.Println("-------------- SUBSECTION 1 ----------------\n" + sub1)
+	// Append content after last match to matches slice
+	matchesh2 = append(matchesh2, []string{contentAfterLastMatch})
 
-		// 	// s.NextUntil("h2, h3").Each(func(k int, s *goquery.Selection) {
-		// 	// 	title := s.Text()
-		// 	// 	fmt.Println("---------------- SUBSECTION 2 / 3 -----------------\n" + title)
-		// 	// })
-		// })
-	})
+	// Compile regex outside of loop for efficiency
+	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
 
+	// Loop through matches and process each one
+	for i, match := range matchesh2 {
+		fixh2(match, i, reh2h)
+	}
+
+	// Write the EPUB
+	err = e.Write(epubFilePath)
+	if err != nil {
+		log.Fatalf("Error writing EPUB: %v", err)
+	}
+	fmt.Println("EPUB created successfully.")
+}
+
+func fixh2(match []string, i int, reh2h *regexp.Regexp) {
+	txt := match[len(match)-1]
+
+	color.Yellow("\n\n==///////////////////////////  FIX H2    //////////////////////////////////==\n\n")
+	color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
+	color.Yellow("\n\n======================================================\n\n")
+	color.Yellow("Prints Index: %d", i)
+	color.Yellow("\n\n======================================================\n\n")
+
+	// Find all matches for <h2>...</h2> and extract the content
+	submatches := reh2h.FindAllStringSubmatch(txt, -1)
+	for _, submatch := range submatches {
+		if len(submatch) > 1 {
+			h2Content := submatch[1]
+			color.Yellow("H2 content: %s", h2Content)
+		}
+	}
+
+	fmt.Println("h2 slutt")
+
+	fmt.Println(txt)
+}
+
+func manageFlag() (*string, *string, *string, *string, *string, *string) {
+	author := flag.String("author", "", "the author of the EPUB")
+	title := flag.String("title", "", "the title of the EPUB")
+	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
+	epubFile := flag.String("epubfile", "", "the name of the file to be tested as a section")
+	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
+	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
+	flag.Parse()
+
+	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
+		flag.PrintDefaults()
+		os.Exit(1)
+	}
+	return author, title, wpFile, epubFile, wpFolder, epubFolder
 }
