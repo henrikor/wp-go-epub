@@ -52,13 +52,15 @@ func main() {
 	for _, section := range sections {
 		sectionTitle := reh2.FindStringSubmatch(section.title)
 		if len(sectionTitle) > 1 {
+			section.content = "<h2>" + sectionTitle[1] + "</h2>" + section.content
 			sectionID, _ := e.AddSection(section.content, sectionTitle[1], "", "")
 			for _, subsection := range section.subsections {
 				subsectionTitle := getSubSectionTitle(subsection.title, reh3, reh4, reh5, reh6)
 				if subsectionTitle != "" {
-					e.AddSubSection(sectionID, subsection.content, subsectionTitle, "", "")
+					e.AddSubSection(sectionID, subsection.title+subsection.content, subsectionTitle, "", "")
 				}
 			}
+			section.content = ""
 		}
 	}
 
@@ -98,31 +100,64 @@ func splitIntoSections(content string, reh2, reh3, reh4, reh5, reh6 *regexp.Rege
 		}
 		lastIndex = match[1]
 	}
-	sections = append(sections, Section{content: content[lastIndex:]})
+	// sections = append(sections, Section{content: content[lastIndex:]})
 
 	for i, section := range sections {
 		sectionContent := section.content
-		h3Matches := reh3.FindAllStringIndex(sectionContent, -1)
-		subSections := []SubSection{}
-		lastSubIndex := 0
-
-		for _, match := range h3Matches {
-			if match[0] > lastSubIndex {
-				subSectionContent := sectionContent[lastSubIndex:match[0]]
-				subSectionTitle := sectionContent[match[0]:match[1]]
-				subSection := SubSection{
-					title:   subSectionTitle,
-					content: subSectionContent,
-				}
-				subSections = append(subSections, subSection)
-			}
-			lastSubIndex = match[1]
-		}
-		subSections = append(subSections, SubSection{content: sectionContent[lastSubIndex:]})
+		subSections := splitIntoSubSections(sectionContent, reh3, reh4, reh5, reh6)
 		sections[i].subsections = subSections
+		if len(subSections) > 0 {
+			// Just include content before the first subsection
+			// sections[i].content = subSections[0].content
+			sections[i].subsections = subSections[1:]
+		}
 	}
 
 	return sections
+}
+
+func splitIntoSubSections(content string, reh3, reh4, reh5, reh6 *regexp.Regexp) []SubSection {
+	allRehs := []*regexp.Regexp{reh3, reh4, reh5, reh6}
+	var matches []int
+
+	for _, reh := range allRehs {
+		for _, match := range reh.FindAllStringIndex(content, -1) {
+			matches = append(matches, match[0])
+		}
+	}
+	matches = unique(matches)
+	subSections := []SubSection{}
+	lastIndex := 0
+
+	for _, match := range matches {
+		if match > lastIndex {
+			subSectionContent := content[lastIndex:match]
+			subSectionTitle := content[match:]
+			subSection := SubSection{
+				title:   subSectionTitle,
+				content: subSectionContent,
+			}
+			subSections = append(subSections, subSection)
+		}
+		lastIndex = match
+	}
+	subSections = append(subSections, SubSection{content: content[lastIndex:]})
+
+	return subSections
+}
+
+func unique(input []int) []int {
+	uniqueMap := make(map[int]struct{})
+	for _, v := range input {
+		uniqueMap[v] = struct{}{}
+	}
+
+	uniqueList := make([]int, 0, len(uniqueMap))
+	for k := range uniqueMap {
+		uniqueList = append(uniqueList, k)
+	}
+
+	return uniqueList
 }
 
 func getSubSectionTitle(title string, reh3, reh4, reh5, reh6 *regexp.Regexp) string {
