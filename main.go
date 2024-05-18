@@ -20,7 +20,7 @@ func main() {
 	// Create a new EPUB
 	e, err := epub.NewEpub(*title)
 	if err != nil {
-		log.Fatalf("Error creating EPUB: %v", err)
+		log.Fatalf("Failed to create EPUB: %v", err)
 	}
 	e.SetAuthor(*author)
 	e.SetTitle(*title)
@@ -38,29 +38,17 @@ func main() {
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
-	// Define regex patterns for headings
+	// Define regex pattern for h2 headings
 	reh2 := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
-	reh3 := regexp.MustCompile(`<h3.*?>(.*?)<\/h3>`)
-	reh4 := regexp.MustCompile(`<h4.*?>(.*?)<\/h4>`)
-	reh5 := regexp.MustCompile(`<h5.*?>(.*?)<\/h5>`)
-	reh6 := regexp.MustCompile(`<h6.*?>(.*?)<\/h6>`)
 
-	// Split content into sections and subsections
-	sections := splitIntoSections(ncontent, reh2, reh3, reh4, reh5, reh6)
+	// Split content into sections
+	sections := splitIntoSections(ncontent, reh2)
 
-	// Add sections and subsections to EPUB
+	// Add sections to EPUB
 	for _, section := range sections {
 		sectionTitle := reh2.FindStringSubmatch(section.title)
 		if len(sectionTitle) > 1 {
-			section.content = "<h2>" + sectionTitle[1] + "</h2>" + section.content
-			sectionID, _ := e.AddSection(section.content, sectionTitle[1], "", "")
-			for _, subsection := range section.subsections {
-				subsectionTitle := getSubSectionTitle(subsection.title, reh3, reh4, reh5, reh6)
-				if subsectionTitle != "" {
-					e.AddSubSection(sectionID, subsection.title+subsection.content, subsectionTitle, "", "")
-				}
-			}
-			section.content = ""
+			e.AddSection(section.title+section.content, sectionTitle[1], "", "")
 		}
 	}
 
@@ -73,25 +61,19 @@ func main() {
 }
 
 type Section struct {
-	title       string
-	content     string
-	subsections []SubSection
-}
-
-type SubSection struct {
 	title   string
 	content string
 }
 
-func splitIntoSections(content string, reh2, reh3, reh4, reh5, reh6 *regexp.Regexp) []Section {
+func splitIntoSections(content string, reh2 *regexp.Regexp) []Section {
 	sections := []Section{}
 	h2Matches := reh2.FindAllStringIndex(content, -1)
 	lastIndex := 0
 
 	for _, match := range h2Matches {
 		if match[0] > lastIndex {
-			sectionContent := content[lastIndex:match[0]]
 			sectionTitle := content[match[0]:match[1]]
+			sectionContent := content[lastIndex:match[0]]
 			section := Section{
 				title:   sectionTitle,
 				content: sectionContent,
@@ -100,84 +82,16 @@ func splitIntoSections(content string, reh2, reh3, reh4, reh5, reh6 *regexp.Rege
 		}
 		lastIndex = match[1]
 	}
-	// sections = append(sections, Section{content: content[lastIndex:]})
-
-	for i, section := range sections {
-		sectionContent := section.content
-		subSections := splitIntoSubSections(sectionContent, reh3, reh4, reh5, reh6)
-		sections[i].subsections = subSections
-		if len(subSections) > 0 {
-			// Just include content before the first subsection
-			// sections[i].content = subSections[0].content
-			sections[i].subsections = subSections[1:]
-		}
+	// Add the last section
+	if lastIndex < len(content) {
+		lastSectionContent := content[lastIndex:]
+		sections = append(sections, Section{
+			title:   "",
+			content: lastSectionContent,
+		})
 	}
 
 	return sections
-}
-
-func splitIntoSubSections(content string, reh3, reh4, reh5, reh6 *regexp.Regexp) []SubSection {
-	allRehs := []*regexp.Regexp{reh3, reh4, reh5, reh6}
-	var matches []int
-
-	for _, reh := range allRehs {
-		for _, match := range reh.FindAllStringIndex(content, -1) {
-			matches = append(matches, match[0])
-		}
-	}
-	matches = unique(matches)
-	subSections := []SubSection{}
-	lastIndex := 0
-
-	for _, match := range matches {
-		if match > lastIndex {
-			subSectionContent := content[lastIndex:match]
-			subSectionTitle := content[match:]
-			subSection := SubSection{
-				title:   subSectionTitle,
-				content: subSectionContent,
-			}
-			subSections = append(subSections, subSection)
-		}
-		lastIndex = match
-	}
-	subSections = append(subSections, SubSection{content: content[lastIndex:]})
-
-	return subSections
-}
-
-func unique(input []int) []int {
-	uniqueMap := make(map[int]struct{})
-	for _, v := range input {
-		uniqueMap[v] = struct{}{}
-	}
-
-	uniqueList := make([]int, 0, len(uniqueMap))
-	for k := range uniqueMap {
-		uniqueList = append(uniqueList, k)
-	}
-
-	return uniqueList
-}
-
-func getSubSectionTitle(title string, reh3, reh4, reh5, reh6 *regexp.Regexp) string {
-	submatch3 := reh3.FindStringSubmatch(title)
-	if len(submatch3) > 1 {
-		return submatch3[1]
-	}
-	submatch4 := reh4.FindStringSubmatch(title)
-	if len(submatch4) > 1 {
-		return submatch4[1]
-	}
-	submatch5 := reh5.FindStringSubmatch(title)
-	if len(submatch5) > 1 {
-		return submatch5[1]
-	}
-	submatch6 := reh6.FindStringSubmatch(title)
-	if len(submatch6) > 1 {
-		return submatch6[1]
-	}
-	return ""
 }
 
 func manageFlag() (*string, *string, *string, *string, *string, *string) {
