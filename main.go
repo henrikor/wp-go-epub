@@ -65,7 +65,8 @@ func main() {
 
 	// Loop through matches and process each one
 	for i, match := range matchesh2 {
-		fixh2(match, i, reh2h)
+		h2, txt := fixh2(match, i, reh2h)
+		e.AddSection(h2+txt, h2, "", "")
 	}
 
 	// Write the EPUB
@@ -76,20 +77,30 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func fixh2(match []string, i int, reh2h *regexp.Regexp) {
+func fixh2(match []string, i int, reh2h *regexp.Regexp) (string, string) {
 	txt := match[len(match)-1]
 
-	color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
-	color.Yellow("$1: %s", `$1`)
-	color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
-	color.Yellow("\n\n======================================================\n\n")
-	color.Yellow("Prints Index: %d", i)
-	color.Yellow("\n\n======================================================\n\n")
+	// color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
+	// color.Yellow("$1: %s", `$1`)
+	// color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
+	// color.Yellow("\n\n======================================================\n\n")
+	// color.Yellow("Prints Index: %d", i)
+	// color.Yellow("\n\n======================================================\n\n")
 
-	h2 := reh2h.ReplaceAllString(txt, `$1`)
-	color.Yellow("H2 : %s", h2)
+	matches := reh2h.FindStringSubmatch(txt)
 
-	fmt.Println(txt)
+	// Sjekk om det finnes matcher
+	var h2 string
+	if len(matches) > 1 {
+		// matches[1] inneholder innholdet i den første parentesgruppen
+		h2 = matches[1]
+		fmt.Println(h2)
+	} else {
+		fmt.Println("No match found")
+	}
+	return h2, txt
+
+	// fmt.Println(txt)
 }
 
 func manageFlag() (*string, *string, *string, *string, *string, *string) {
