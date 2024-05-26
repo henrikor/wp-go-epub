@@ -28,7 +28,7 @@ func main() {
 	// Add CSS to the EPUB
 	css := `
 		body {
-			white-space: normal;
+			white-space: pre-wrap; /* ensures that white space is preserved, but wraps text */
 		}
 	`
 	cssFilePath := "styles.css"
@@ -54,6 +54,9 @@ func main() {
 
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
+
+	// Remove unnecessary line breaks
+	ncontent = removeExtraLineBreaks(ncontent)
 
 	// Process content based on the specified heading type
 	processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
@@ -172,6 +175,12 @@ func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
 func removeHTMLTags(input string) string {
 	re := regexp.MustCompile(`<.*?>`)
 	return re.ReplaceAllString(input, "")
+}
+
+func removeExtraLineBreaks(input string) string {
+	// Remove line breaks that are not inside HTML tags
+	re := regexp.MustCompile(`(?s)(>)(\n|\r|\r\n)(<)`)
+	return re.ReplaceAllString(input, "$1$3")
 }
 
 func manageFlag() (*string, *string, *string, *string, *string, *string, *string) {
