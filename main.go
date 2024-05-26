@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// Parse command line flags
-	author, title, wpFile, epubFile, wpFolder, epubFolder := manageFlag()
+	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType := manageFlag()
 
 	// Create a new EPUB
 	e, err := epub.NewEpub(*title)
@@ -38,37 +38,8 @@ func main() {
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
-	// Find all occurrences of <h2> tags and their positions
-	reh2 := regexp.MustCompile(`(?s)<h2.*?>.*?</h2>`)
-	matches := reh2.FindAllStringIndex(ncontent, -1)
-
-	if len(matches) == 0 {
-		fmt.Println("No <h2> tags found in the text.")
-		return
-	}
-
-	// Extract content between <h2> tags
-	sections := make([]string, 0, len(matches)+1)
-	lastIndex := 0
-	for _, match := range matches {
-		sections = append(sections, ncontent[lastIndex:match[0]])
-		lastIndex = match[0]
-	}
-	// Add the remaining content after the last <h2> tag
-	sections = append(sections, ncontent[lastIndex:])
-
-	// Compile regex for extracting text within <h2> tags
-	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
-
-	// Loop through sections and process each one
-	for _, section := range sections {
-		// Skip empty sections
-		if strings.TrimSpace(section) == "" {
-			continue
-		}
-		h2, txt := fixh2(section, reh2h)
-		e.AddSection(h2+txt, h2, "", "")
-	}
+	// Process content based on the specified heading type
+	processContent(ncontent, e, *headingType)
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -78,31 +49,66 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func fixh2(section string, reh2h *regexp.Regexp) (string, string) {
-	// Find <h2> content
-	matches := reh2h.FindStringSubmatch(section)
-	var h2 string
+func processContent(content string, e *epub.Epub, headingType string) {
+	// Find all occurrences of specified heading tags and their positions
+	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
+	matches := reh.FindAllStringIndex(content, -1)
+
+	if len(matches) == 0 {
+		fmt.Printf("No <%s> tags found in the text.\n", headingType)
+		return
+	}
+
+	// Extract content between specified heading tags
+	sections := make([]string, 0, len(matches)+1)
+	lastIndex := 0
+	for _, match := range matches {
+		sections = append(sections, content[lastIndex:match[0]])
+		lastIndex = match[0]
+	}
+	// Add the remaining content after the last heading tag
+	sections = append(sections, content[lastIndex:])
+
+	// Compile regex for extracting text within specified heading tags
+	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
+
+	// Loop through sections and process each one
+	for _, section := range sections {
+		// Skip empty sections
+		if strings.TrimSpace(section) == "" {
+			continue
+		}
+		h, txt := fixHeading(section, rehh)
+		e.AddSection(h+txt, h, "", "")
+	}
+}
+
+func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
+	// Find heading content
+	matches := rehh.FindStringSubmatch(section)
+	var heading string
 	if len(matches) > 0 {
-		h2 = matches[1]
-		fmt.Println(h2)
+		heading = matches[1]
+		fmt.Println(heading)
 	} else {
 		fmt.Println("No match found")
 	}
-	return h2, section
+	return heading, section
 }
 
-func manageFlag() (*string, *string, *string, *string, *string, *string) {
+func manageFlag() (*string, *string, *string, *string, *string, *string, *string) {
 	author := flag.String("author", "", "the author of the EPUB")
 	title := flag.String("title", "", "the title of the EPUB")
 	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
 	epubFile := flag.String("epubfile", "", "the name of the file to be added as a section")
 	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
 	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
+	headingType := flag.String("headingtype", "h2", "the type of heading to look for (e.g., h2, h3, h4)")
 	flag.Parse()
 
 	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	return author, title, wpFile, epubFile, wpFolder, epubFolder
+	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType
 }
