@@ -39,7 +39,7 @@ func main() {
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
 	// Process content based on the specified heading type
-	processContent(ncontent, e, *headingType)
+	processContent(ncontent, e, *headingType, "h3")
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -49,7 +49,7 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func processContent(content string, e *epub.Epub, headingType string) {
+func processContent(content string, e *epub.Epub, headingType string, subheadingType string) {
 	// Find all occurrences of specified heading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
 	matches := reh.FindAllStringIndex(content, -1)
@@ -79,8 +79,41 @@ func processContent(content string, e *epub.Epub, headingType string) {
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
-		e.AddSection(h+txt, h, "", "")
+
+		// Add the main section
+		sectionID, _ := e.AddSection(txt, h, "", "")
+
+		// Process subsections based on subheadingType
+		subsections := processSubsections(txt, subheadingType)
+		for _, subsection := range subsections {
+			sh, stxt := fixHeading(subsection, regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType)))
+			if strings.TrimSpace(sh) != "" {
+				e.AddSubSection(sectionID, stxt, sh, "", "")
+			}
+		}
 	}
+}
+
+func processSubsections(content string, subheadingType string) []string {
+	// Find all occurrences of specified subheading tags and their positions
+	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, subheadingType, subheadingType))
+	matches := reh.FindAllStringIndex(content, -1)
+
+	if len(matches) == 0 {
+		return []string{content}
+	}
+
+	// Extract content between specified subheading tags
+	subsections := make([]string, 0, len(matches)+1)
+	lastIndex := 0
+	for _, match := range matches {
+		subsections = append(subsections, content[lastIndex:match[0]])
+		lastIndex = match[0]
+	}
+	// Add the remaining content after the last subheading tag
+	subsections = append(subsections, content[lastIndex:])
+
+	return subsections
 }
 
 func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
