@@ -104,7 +104,15 @@ func main() {
 	ncontent = removeExtraLineBreaks(ncontent)
 
 	// Process content based on the specified heading type
-	processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
+	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
+
+	// Add footnotes to the end of the book
+	if footnotes != "" {
+		_, err := e.AddSection(footnotes, "Footnotes", "", "")
+		if err != nil {
+			log.Fatalf("Error adding footnotes: %v", err)
+		}
+	}
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -120,14 +128,14 @@ func main() {
 	}
 }
 
-func processContent(content string, e *epub.Epub, cssPath, headingType string, subheadingTypes ...string) {
+func processContent(content string, e *epub.Epub, cssPath, headingType string, subheadingTypes ...string) string {
 	// Find all occurrences of specified heading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
 	matches := reh.FindAllStringIndex(content, -1)
 
 	if len(matches) == 0 {
 		fmt.Printf("No <%s> tags found in the text.\n", headingType)
-		return
+		return ""
 	}
 
 	// Extract content between specified heading tags
@@ -143,6 +151,9 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 	// Compile regex for extracting text within specified heading tags
 	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
 
+	// Initialize footnote content
+	var footnotes strings.Builder
+
 	// Loop through sections and process each one
 	for _, section := range sections {
 		// Skip empty sections
@@ -150,15 +161,60 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
+		txt, sectionFootnotes := replaceFootnotes(txt)
 
 		// Add the main section
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
 
 		// Process subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, subheadingTypes...)
+
+		// Append footnotes to the main footnotes content
+		footnotes.WriteString(sectionFootnotes)
 	}
+
+	// Return the main content and footnotes
+	return footnotes.String()
 }
 
+func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
+	// Find heading content
+	matches := rehh.FindStringSubmatch(section)
+	var heading string
+	if len(matches) > 0 {
+		heading = matches[1]
+		fmt.Println(heading)
+	} else {
+		fmt.Println("No match found")
+	}
+	return heading, section
+}
+
+func replaceFootnotes(input string) (string, string) {
+	// Compile regex to find footnote patterns
+	re := regexp.MustCompile(`\(\((.*?)\)\)`)
+	footnoteCount := 1
+
+	// Replace each footnote pattern with the appropriate HTML
+	output := re.ReplaceAllStringFunc(input, func(match string) string {
+		// Generate footnote ID
+		footnoteID := fmt.Sprintf("footnote_%d", footnoteCount)
+		footnoteCount++
+
+		// Generate footnote content
+		footnoteContent := fmt.Sprintf(`<aside epub:type="footnote" id="%s">%s</aside>`, footnoteID, match[2:len(match)-2])
+		return fmt.Sprintf(`<sup><a href="#%s">%d</a></sup>`, footnoteID, footnoteCount-1) + footnoteContent
+	})
+
+	// Generate combined footnotes content
+	footnotesContent := ""
+	for i := 1; i < footnoteCount; i++ {
+		footnoteID := fmt.Sprintf("footnote_%d", i)
+		footnotesContent += fmt.Sprintf(`<p><a href="#%s">%d</a>: %s</p>`, footnoteID, i, input)
+	}
+
+	return output, footnotesContent
+}
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
@@ -201,20 +257,6 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 			processSubsectionsRecursively(stxt, subSectionID, e, cssPath, remainingSubheadingTypes...)
 		}
 	}
-}
-
-func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
-	// Find heading content
-	matches := rehh.FindStringSubmatch(section)
-	var heading string
-	if len(matches) > 0 {
-		heading = matches[1]
-		heading = removeHTMLTags(heading)
-		fmt.Println(heading)
-	} else {
-		fmt.Println("No match found")
-	}
-	return heading, section
 }
 
 func removeHTMLTags(input string) string {
