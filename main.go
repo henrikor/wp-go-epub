@@ -15,7 +15,7 @@ import (
 
 func main() {
 	// Parse command line flags
-	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType := manageFlag()
+	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr := manageFlag()
 
 	// Create a new EPUB
 	e, err := epub.NewEpub(*title)
@@ -28,7 +28,47 @@ func main() {
 	// Add CSS to the EPUB
 	css := `
 		body {
-			white-space: pre-wrap; /* ensures that white space is preserved, but wraps text */
+			font-family: Arial, sans-serif;
+			line-height: 1.6;
+			margin: 0;
+			padding: 0;
+			white-space: pre-wrap;
+		}
+		h1, h2, h3, h4, h5, h6 {
+			font-family: 'Georgia', serif;
+			line-height: 1.4;
+			margin-top: 1em;
+			margin-bottom: 0.5em;
+		}
+		h1 {
+			font-size: 2em;
+			border-bottom: 2px solid #000;
+		}
+		h2 {
+			font-size: 1.75em;
+			border-bottom: 1px solid #000;
+		}
+		h3 {
+			font-size: 1.5em;
+		}
+		h4 {
+			font-size: 1.25em;
+		}
+		h5 {
+			font-size: 1em;
+		}
+		h6 {
+			font-size: 0.875em;
+		}
+		p {
+			margin: 0.5em 0;
+		}
+		a {
+			color: #007BFF;
+			text-decoration: none;
+		}
+		a:hover {
+			text-decoration: underline;
 		}
 	`
 	cssFilePath := "styles.css"
@@ -54,6 +94,11 @@ func main() {
 
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
+
+	// Remove <br> elements if the flag is set
+	if *removeBr {
+		ncontent = removeBrElements(ncontent)
+	}
 
 	// Remove unnecessary line breaks
 	ncontent = removeExtraLineBreaks(ncontent)
@@ -183,7 +228,12 @@ func removeExtraLineBreaks(input string) string {
 	return re.ReplaceAllString(input, "$1$3")
 }
 
-func manageFlag() (*string, *string, *string, *string, *string, *string, *string) {
+func removeBrElements(input string) string {
+	re := regexp.MustCompile(`<br\s*/?>`)
+	return re.ReplaceAllString(input, " ")
+}
+
+func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool) {
 	author := flag.String("author", "", "the author of the EPUB")
 	title := flag.String("title", "", "the title of the EPUB")
 	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
@@ -191,11 +241,12 @@ func manageFlag() (*string, *string, *string, *string, *string, *string, *string
 	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
 	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
 	headingType := flag.String("headingtype", "h2", "the type of heading to look for (e.g., h2, h3, h4)")
+	removeBr := flag.Bool("br", false, "remove <br> elements from the content")
 	flag.Parse()
 
 	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType
+	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr
 }
