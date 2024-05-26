@@ -10,7 +10,6 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/go-shiori/go-epub"
 )
 
@@ -39,33 +38,35 @@ func main() {
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
-	// Find all occurrences of <!-- wp:heading -->
-	reh2 := regexp.MustCompile(`(?s)<!-- wp:heading -->(.*?)<!-- wp:heading -->`)
-	matchesh2 := reh2.FindAllStringSubmatch(ncontent, -1)
+	// Find all occurrences of <h2> tags and their positions
+	reh2 := regexp.MustCompile(`(?s)<h2.*?>.*?</h2>`)
+	matches := reh2.FindAllStringIndex(ncontent, -1)
 
-	// Find the last occurrence of <!-- wp:heading -->
-	lastIndex := reh2.FindAllStringIndex(ncontent, -1)
-
-	color.Yellow("\n\n--------------------------------------------------------\n\n")
-
-	var contentAfterLastMatch string
-	if len(lastIndex) > 0 {
-		lastMatchIndex := lastIndex[len(lastIndex)-1][1]  // End of last occurrence of <!-- wp:heading -->
-		contentAfterLastMatch = ncontent[lastMatchIndex:] // All content after last occurrence of <!-- wp:heading -->
-	} else {
-		fmt.Println("No matches found for <!-- wp:heading --> in the text.")
+	if len(matches) == 0 {
+		fmt.Println("No <h2> tags found in the text.")
+		return
 	}
-	color.Yellow("\n\n--------------------------------------------------------\n\n")
 
-	// Append content after last match to matches slice
-	matchesh2 = append(matchesh2, []string{contentAfterLastMatch})
+	// Extract content between <h2> tags
+	sections := make([]string, 0, len(matches)+1)
+	lastIndex := 0
+	for _, match := range matches {
+		sections = append(sections, ncontent[lastIndex:match[0]])
+		lastIndex = match[0]
+	}
+	// Add the remaining content after the last <h2> tag
+	sections = append(sections, ncontent[lastIndex:])
 
-	// Compile regex outside of loop for efficiency
+	// Compile regex for extracting text within <h2> tags
 	reh2h := regexp.MustCompile(`<h2.*?>(.*?)<\/h2>`)
 
-	// Loop through matches and process each one
-	for i, match := range matchesh2 {
-		h2, txt := fixh2(match, i, reh2h)
+	// Loop through sections and process each one
+	for _, section := range sections {
+		// Skip empty sections
+		if strings.TrimSpace(section) == "" {
+			continue
+		}
+		h2, txt := fixh2(section, reh2h)
 		e.AddSection(h2+txt, h2, "", "")
 	}
 
@@ -77,30 +78,17 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func fixh2(match []string, i int, reh2h *regexp.Regexp) (string, string) {
-	txt := match[len(match)-1]
-
-	// color.Yellow("\n\n==/////////////////////////////////////////////////////////////==\n\n")
-	// color.Yellow("$1: %s", `$1`)
-	// color.Yellow("\n\n/////////////////////////////////////////////////////////////====\n\n")
-	// color.Yellow("\n\n======================================================\n\n")
-	// color.Yellow("Prints Index: %d", i)
-	// color.Yellow("\n\n======================================================\n\n")
-
-	matches := reh2h.FindStringSubmatch(txt)
-
-	// Sjekk om det finnes matcher
+func fixh2(section string, reh2h *regexp.Regexp) (string, string) {
+	// Find <h2> content
+	matches := reh2h.FindStringSubmatch(section)
 	var h2 string
-	if len(matches) > 1 {
-		// matches[1] inneholder innholdet i den første parentesgruppen
+	if len(matches) > 0 {
 		h2 = matches[1]
 		fmt.Println(h2)
 	} else {
 		fmt.Println("No match found")
 	}
-	return h2, txt
-
-	// fmt.Println(txt)
+	return h2, section
 }
 
 func manageFlag() (*string, *string, *string, *string, *string, *string) {
