@@ -39,7 +39,7 @@ func main() {
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
 	// Process content based on the specified heading type
-	processContent(ncontent, e, *headingType, "h3")
+	processContent(ncontent, e, *headingType, "h3", "h4")
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -49,7 +49,7 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func processContent(content string, e *epub.Epub, headingType string, subheadingType string) {
+func processContent(content string, e *epub.Epub, headingType string, subheadingType string, subSubheadingType string) {
 	// Find all occurrences of specified heading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
 	matches := reh.FindAllStringIndex(content, -1)
@@ -84,17 +84,25 @@ func processContent(content string, e *epub.Epub, headingType string, subheading
 		sectionID, _ := e.AddSection(txt, h, "", "")
 
 		// Process subsections based on subheadingType
-		subsections := processSubsections(txt, subheadingType)
+		subsections := processSubsections(txt, subheadingType, subSubheadingType, sectionID, e)
 		for _, subsection := range subsections {
 			sh, stxt := fixHeading(subsection, regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType)))
 			if strings.TrimSpace(sh) != "" {
-				e.AddSubSection(sectionID, stxt, sh, "", "")
+				subSectionID, _ := e.AddSubSection(sectionID, stxt, sh, "", "")
+				// Process subsubsections based on subSubheadingType
+				subSubsections := processSubsections(stxt, subSubheadingType, "", subSectionID, e)
+				for _, subsubsection := range subSubsections {
+					subsh, substxt := fixHeading(subsubsection, regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subSubheadingType, subSubheadingType)))
+					if strings.TrimSpace(subsh) != "" {
+						e.AddSubSection(subSectionID, substxt, subsh, "", "")
+					}
+				}
 			}
 		}
 	}
 }
 
-func processSubsections(content string, subheadingType string) []string {
+func processSubsections(content string, subheadingType string, subSubheadingType string, parentSectionID string, e *epub.Epub) []string {
 	// Find all occurrences of specified subheading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, subheadingType, subheadingType))
 	matches := reh.FindAllStringIndex(content, -1)
