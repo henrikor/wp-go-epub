@@ -39,7 +39,7 @@ func main() {
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
 	// Process content based on the specified heading type
-	processContent(ncontent, e, *headingType, "h3", "h4")
+	processContent(ncontent, e, *headingType, "h3", "h4", "h5", "h6")
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -49,7 +49,7 @@ func main() {
 	fmt.Println("EPUB created successfully.")
 }
 
-func processContent(content string, e *epub.Epub, headingType string, subheadingType string, subSubheadingType string) {
+func processContent(content string, e *epub.Epub, headingType string, subheadingTypes ...string) {
 	// Find all occurrences of specified heading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
 	matches := reh.FindAllStringIndex(content, -1)
@@ -83,32 +83,25 @@ func processContent(content string, e *epub.Epub, headingType string, subheading
 		// Add the main section
 		sectionID, _ := e.AddSection(txt, h, "", "")
 
-		// Process subsections based on subheadingType
-		subsections := processSubsections(txt, subheadingType, subSubheadingType, sectionID, e)
-		for _, subsection := range subsections {
-			sh, stxt := fixHeading(subsection, regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType)))
-			if strings.TrimSpace(sh) != "" {
-				subSectionID, _ := e.AddSubSection(sectionID, stxt, sh, "", "")
-				// Process subsubsections based on subSubheadingType
-				subSubsections := processSubsections(stxt, subSubheadingType, "", subSectionID, e)
-				for _, subsubsection := range subSubsections {
-					subsh, substxt := fixHeading(subsubsection, regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subSubheadingType, subSubheadingType)))
-					if strings.TrimSpace(subsh) != "" {
-						e.AddSubSection(subSectionID, substxt, subsh, "", "")
-					}
-				}
-			}
-		}
+		// Process subsections recursively
+		processSubsectionsRecursively(txt, sectionID, e, subheadingTypes...)
 	}
 }
 
-func processSubsections(content string, subheadingType string, subSubheadingType string, parentSectionID string, e *epub.Epub) []string {
+func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, subheadingTypes ...string) {
+	if len(subheadingTypes) == 0 {
+		return
+	}
+
+	subheadingType := subheadingTypes[0]
+	remainingSubheadingTypes := subheadingTypes[1:]
+
 	// Find all occurrences of specified subheading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, subheadingType, subheadingType))
 	matches := reh.FindAllStringIndex(content, -1)
 
 	if len(matches) == 0 {
-		return []string{content}
+		return
 	}
 
 	// Extract content between specified subheading tags
@@ -121,7 +114,22 @@ func processSubsections(content string, subheadingType string, subSubheadingType
 	// Add the remaining content after the last subheading tag
 	subsections = append(subsections, content[lastIndex:])
 
-	return subsections
+	// Compile regex for extracting text within specified subheading tags
+	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType))
+
+	// Loop through subsections and process each one
+	for _, subsection := range subsections {
+		// Skip empty subsections
+		if strings.TrimSpace(subsection) == "" {
+			continue
+		}
+		sh, stxt := fixHeading(subsection, rehh)
+		if strings.TrimSpace(sh) != "" {
+			subSectionID, _ := e.AddSubSection(parentSectionID, stxt, sh, "", "")
+			// Recursively process further sub-subsections
+			processSubsectionsRecursively(stxt, subSectionID, e, remainingSubheadingTypes...)
+		}
+	}
 }
 
 func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
