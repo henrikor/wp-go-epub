@@ -25,6 +25,23 @@ func main() {
 	e.SetAuthor(*author)
 	e.SetTitle(*title)
 
+	// Add CSS to the EPUB
+	css := `
+		body {
+			white-space: normal;
+		}
+	`
+	cssFilePath := "styles.css"
+	err = ioutil.WriteFile(cssFilePath, []byte(css), 0644)
+	if err != nil {
+		log.Fatalf("Error writing CSS file: %v", err)
+	}
+
+	cssPath, err := e.AddCSS(cssFilePath, "")
+	if err != nil {
+		log.Fatalf("Error adding CSS: %v", err)
+	}
+
 	// Get the path of the file
 	wpFilePath := filepath.Join(*wpFolder, *wpFile)
 	epubFilePath := filepath.Join(*epubFolder, *epubFile)
@@ -39,7 +56,7 @@ func main() {
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
 
 	// Process content based on the specified heading type
-	processContent(ncontent, e, *headingType, "h3", "h4", "h5", "h6")
+	processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
 
 	// Write the EPUB
 	err = e.Write(epubFilePath)
@@ -47,9 +64,15 @@ func main() {
 		log.Fatalf("Error writing EPUB: %v", err)
 	}
 	fmt.Println("EPUB created successfully.")
+
+	// Clean up the temporary CSS file
+	err = os.Remove(cssFilePath)
+	if err != nil {
+		log.Printf("Warning: Unable to remove temporary CSS file: %v", err)
+	}
 }
 
-func processContent(content string, e *epub.Epub, headingType string, subheadingTypes ...string) {
+func processContent(content string, e *epub.Epub, cssPath, headingType string, subheadingTypes ...string) {
 	// Find all occurrences of specified heading tags and their positions
 	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
 	matches := reh.FindAllStringIndex(content, -1)
@@ -81,14 +104,14 @@ func processContent(content string, e *epub.Epub, headingType string, subheading
 		h, txt := fixHeading(section, rehh)
 
 		// Add the main section
-		sectionID, _ := e.AddSection(txt, h, "", "")
+		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
 
 		// Process subsections recursively
-		processSubsectionsRecursively(txt, sectionID, e, subheadingTypes...)
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, subheadingTypes...)
 	}
 }
 
-func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, subheadingTypes ...string) {
+func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
 	}
@@ -125,9 +148,9 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		}
 		sh, stxt := fixHeading(subsection, rehh)
 		if strings.TrimSpace(sh) != "" {
-			subSectionID, _ := e.AddSubSection(parentSectionID, stxt, sh, "", "")
+			subSectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, stxt), sh, "", "")
 			// Recursively process further sub-subsections
-			processSubsectionsRecursively(stxt, subSectionID, e, remainingSubheadingTypes...)
+			processSubsectionsRecursively(stxt, subSectionID, e, cssPath, remainingSubheadingTypes...)
 		}
 	}
 }
