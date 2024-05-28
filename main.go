@@ -183,6 +183,7 @@ func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
 	var heading string
 	if len(matches) > 0 {
 		heading = matches[1]
+		heading = removeHTMLTags(heading)
 		fmt.Println(heading)
 	} else {
 		fmt.Println("No match found")
