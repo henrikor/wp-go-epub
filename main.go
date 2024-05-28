@@ -13,6 +13,8 @@ import (
 	"github.com/go-shiori/go-epub"
 )
 
+var footnoteFilePath = "footnotes.xhtml"
+
 func main() {
 	// Parse command line flags
 	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr := manageFlag()
@@ -107,8 +109,9 @@ func main() {
 	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
 
 	// Add footnotes to the end of the book
+
 	if footnotes != "" {
-		_, err := e.AddSection(footnotes, "Footnotes", "", "")
+		_, err := e.AddSection(footnotes, "Footnotes", footnoteFilePath, "")
 		if err != nil {
 			log.Fatalf("Error adding footnotes: %v", err)
 		}
@@ -143,7 +146,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 	lastIndex := 0
 	for _, match := range matches {
 		sections = append(sections, content[lastIndex:match[0]])
-		lastIndex = match[0]
+		lastIndex = match[1]
 	}
 	// Add the remaining content after the last heading tag
 	sections = append(sections, content[lastIndex:])
@@ -212,7 +215,7 @@ func replaceFootnotes(input string, footnoteCount *int) (string, string) {
 		(*footnoteCount)++
 
 		// Return the superscript link to the footnote
-		return fmt.Sprintf(`<sup id="note_%d"><a href="#%s">%d</a></sup>`, *footnoteCount-1, footnoteID, *footnoteCount-1)
+		return fmt.Sprintf(`<sup><a href="%s#%s">%d</a></sup>`, footnoteFilePath, footnoteID, *footnoteCount-1)
 	})
 
 	// Return the text with footnote references and the footnotes content
@@ -240,7 +243,7 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	lastIndex := 0
 	for _, match := range matches {
 		subsections = append(subsections, content[lastIndex:match[0]])
-		lastIndex = match[0]
+		lastIndex = match[1]
 	}
 	// Add the remaining content after the last subheading tag
 	subsections = append(subsections, content[lastIndex:])
@@ -254,29 +257,30 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		if strings.TrimSpace(subsection) == "" {
 			continue
 		}
-		sh, stxt := fixHeading(subsection, rehh)
-		if strings.TrimSpace(sh) != "" {
-			subSectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, stxt), sh, "", "")
-			// Recursively process further sub-subsections
-			processSubsectionsRecursively(stxt, subSectionID, e, cssPath, remainingSubheadingTypes...)
-		}
+		h, txt := fixHeading(subsection, rehh)
+		txt, _ = replaceFootnotes(txt, new(int))
+
+		// Add the subsection under the parent section
+		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+
+		// Process sub-subsections recursively
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, remainingSubheadingTypes...)
 	}
+}
+
+func removeBrElements(input string) string {
+	re := regexp.MustCompile(`(?i)<br\s*/?>`)
+	return re.ReplaceAllString(input, "")
+}
+
+func removeExtraLineBreaks(input string) string {
+	re := regexp.MustCompile(`\r?\n`)
+	return re.ReplaceAllString(input, " ")
 }
 
 func removeHTMLTags(input string) string {
 	re := regexp.MustCompile(`<.*?>`)
 	return re.ReplaceAllString(input, "")
-}
-
-func removeExtraLineBreaks(input string) string {
-	// Remove line breaks that are not inside HTML tags
-	re := regexp.MustCompile(`(?s)(>)(\n|\r|\r\n)(<)`)
-	return re.ReplaceAllString(input, "$1$3")
-}
-
-func removeBrElements(input string) string {
-	re := regexp.MustCompile(`<br\s*/?>`)
-	return re.ReplaceAllString(input, " ")
 }
 
 func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool) {
