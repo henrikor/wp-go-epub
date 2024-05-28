@@ -153,6 +153,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 
 	// Initialize footnote content
 	var footnotes strings.Builder
+	footnoteCount := 1
 
 	// Loop through sections and process each one
 	for _, section := range sections {
@@ -161,7 +162,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
-		txt, sectionFootnotes := replaceFootnotes(txt)
+		txt, sectionFootnotes := replaceFootnotes(txt, &footnoteCount)
 
 		// Add the main section
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
@@ -191,31 +192,33 @@ func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
 	return heading, section
 }
 
-func replaceFootnotes(input string) (string, string) {
+func replaceFootnotes(input string, footnoteCount *int) (string, string) {
 	// Compile regex to find footnote patterns
 	re := regexp.MustCompile(`\(\((.*?)\)\)`)
-	footnoteCount := 1
+
+	// Initialize a builder for footnotes content
+	var footnotes strings.Builder
 
 	// Replace each footnote pattern with the appropriate HTML
 	output := re.ReplaceAllStringFunc(input, func(match string) string {
 		// Generate footnote ID
-		footnoteID := fmt.Sprintf("footnote_%d", footnoteCount)
-		footnoteCount++
+		footnoteID := fmt.Sprintf("footnote_%d", *footnoteCount)
+		footnoteText := match[2 : len(match)-2] // Extract footnote text
 
-		// Generate footnote content
-		footnoteContent := fmt.Sprintf(`<aside epub:type="footnote" id="%s">%s</aside>`, footnoteID, match[2:len(match)-2])
-		return fmt.Sprintf(`<sup><a href="#%s">%d</a></sup>`, footnoteID, footnoteCount-1) + footnoteContent
+		// Append the footnote to the footnotes builder
+		footnotes.WriteString(fmt.Sprintf(`<p id="%s">%d: %s</p>`, footnoteID, *footnoteCount, footnoteText))
+
+		// Increment the footnote count
+		(*footnoteCount)++
+
+		// Return the superscript link to the footnote
+		return fmt.Sprintf(`<sup id="note_%d"><a href="#%s">%d</a></sup>`, *footnoteCount-1, footnoteID, *footnoteCount-1)
 	})
 
-	// Generate combined footnotes content
-	footnotesContent := ""
-	for i := 1; i < footnoteCount; i++ {
-		footnoteID := fmt.Sprintf("footnote_%d", i)
-		footnotesContent += fmt.Sprintf(`<p><a href="#%s">%d</a>: %s</p>`, footnoteID, i, input)
-	}
-
-	return output, footnotesContent
+	// Return the text with footnote references and the footnotes content
+	return output, footnotes.String()
 }
+
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
