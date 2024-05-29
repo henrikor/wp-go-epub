@@ -243,7 +243,7 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	lastIndex := 0
 	i := 0
 	for _, match := range matches {
-		i++
+		i++ // Need to skip the first one, else we got h2 ..> h3 repeted in subsection
 		if i == 1 {
 			continue
 		}
