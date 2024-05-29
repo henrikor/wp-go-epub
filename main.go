@@ -146,10 +146,10 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 	lastIndex := 0
 	for _, match := range matches {
 		sections = append(sections, content[lastIndex:match[0]])
-		lastIndex = match[1]
+		lastIndex = match[0]
 	}
 	// Add the remaining content after the last heading tag
-	sections = append(sections, content[lastIndex:])
+	// sections = append(sections, content[lastIndex:])
 
 	// Compile regex for extracting text within specified heading tags
 	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
@@ -243,7 +243,7 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	lastIndex := 0
 	for _, match := range matches {
 		subsections = append(subsections, content[lastIndex:match[0]])
-		lastIndex = match[1]
+		lastIndex = match[0]
 	}
 	// Add the remaining content after the last subheading tag
 	subsections = append(subsections, content[lastIndex:])
