@@ -1,9 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"flag"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-shiori/go-epub"
+	"golang.org/x/net/html"
 )
 
 var footnoteFilePath = "footnotes.xhtml"
@@ -74,7 +75,7 @@ func main() {
 		}
 	`
 	cssFilePath := "styles.css"
-	err = ioutil.WriteFile(cssFilePath, []byte(css), 0644)
+	err = os.WriteFile(cssFilePath, []byte(css), 0644)
 	if err != nil {
 		log.Fatalf("Error writing CSS file: %v", err)
 	}
@@ -89,13 +90,14 @@ func main() {
 	epubFilePath := filepath.Join(*epubFolder, *epubFile)
 
 	// Read the content of the file
-	content, err := ioutil.ReadFile(wpFilePath)
+	content, err := os.ReadFile(wpFilePath)
 	if err != nil {
 		log.Fatalf("Error reading file: %v", err)
 	}
 
 	// Replace HTML entities
 	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
+	ncontent = removePTags(ncontent)
 
 	// Remove <br> elements if the flag is set
 	if *removeBr {
@@ -107,6 +109,11 @@ func main() {
 
 	// Process content based on the specified heading type
 	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
+
+	footnotes, err = cleanHTML(footnotes)
+	if err != nil {
+		fmt.Println("Error cleaning HTML:", err)
+	}
 
 	// Add footnotes to the end of the book
 
@@ -166,6 +173,11 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		}
 		h, txt := fixHeading(section, rehh)
 		txt, sectionFootnotes := replaceFootnotes(txt, &footnoteCount)
+		// Fix the HTML structure in the output
+		txt, err := cleanHTML(txt)
+		if err != nil {
+			fmt.Println("Error cleaning HTML:", err)
+		}
 
 		// Add the main section
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
@@ -214,14 +226,56 @@ func replaceFootnotes(input string, footnoteCount *int) (string, string) {
 		// Increment the footnote count
 		(*footnoteCount)++
 
-		// Return the superscript link to the footnote
-		return fmt.Sprintf(`<sup><a href="%s#%s">%d</a></sup>`, footnoteFilePath, footnoteID, *footnoteCount-1)
+		// Return the superscript link to the footnote and ePub3 popup
+		return fmt.Sprintf(
+			`<sup><a href="#%s" epub:type="noteref" id="ref_%d">%d</a></sup><aside id="%s" epub:type="footnote">%s</aside>`,
+			footnoteID, *footnoteCount-1, *footnoteCount-1, footnoteID, footnoteText,
+		)
 	})
 
 	// Return the text with footnote references and the footnotes content
 	return output, footnotes.String()
 }
 
+// cleanHTML parses and cleans the HTML input.
+func cleanHTML(input string) (string, error) {
+	// Parse the HTML
+	doc, err := html.Parse(strings.NewReader(input))
+	if err != nil {
+		return "", fmt.Errorf("error parsing HTML: %v", err)
+	}
+
+	// Serialize the cleaned HTML
+	var buf bytes.Buffer
+	err = html.Render(&buf, doc)
+	if err != nil {
+		return "", fmt.Errorf("error rendering HTML: %v", err)
+	}
+
+	return buf.String(), nil
+}
+func removePTags(input string) string {
+	// Compile regex to find patterns between (( and ))
+	re := regexp.MustCompile(`\(\((.*?)\)\)`)
+
+	// Replace function to remove <p> and </p> tags
+	replacer := func(match string) string {
+		// Extract the content between (( and ))
+		content := match[2 : len(match)-2]
+
+		// Remove <p> and </p> tags
+		cleanedContent := strings.ReplaceAll(content, "<p.*?>", "")
+		cleanedContent = strings.ReplaceAll(cleanedContent, "</p.*?>", "")
+
+		// Return the cleaned content wrapped in (())
+		return "((" + cleanedContent + "))"
+	}
+
+	// Apply the replacer function to all matches
+	output := re.ReplaceAllStringFunc(input, replacer)
+
+	return output
+}
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
@@ -264,6 +318,10 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		}
 		h, txt := fixHeading(subsection, rehh)
 		txt, _ = replaceFootnotes(txt, new(int))
+		txt, err := cleanHTML(txt)
+		if err != nil {
+			fmt.Println("Error cleaning HTML:", err)
+		}
 
 		// Add the subsection under the parent section
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
