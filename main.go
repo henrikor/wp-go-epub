@@ -172,7 +172,8 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
-		txt, sectionFootnotes := replaceFootnotes(txt, &footnoteCount)
+		var sectionFootnotes string
+		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 		// Fix the HTML structure in the output
 		txt, err := cleanHTML(txt)
 		if err != nil {
@@ -181,6 +182,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 
 		// Add the main section
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+		fmt.Println(sectionID)
 
 		// Process subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, subheadingTypes...)
