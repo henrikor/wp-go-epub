@@ -11,10 +11,17 @@ import (
 	"strings"
 
 	"github.com/go-shiori/go-epub"
+	"github.com/gookit/color"
 	"golang.org/x/net/html"
 )
 
-var footnoteFilePath = "footnotes.xhtml"
+var (
+	footnoteFilePath = "footnotes.xhtml"
+	colorRed         = color.FgRed.Render
+	colorBlue        = color.FgBlue.Render
+	colorYellow      = color.FgYellow.Render
+	colorGreen       = color.Green.Render
+)
 
 func main() {
 	// Parse command line flags
@@ -119,6 +126,8 @@ func main() {
 
 	if footnotes != "" {
 		_, err := e.AddSection(footnotes, "Footnotes", footnoteFilePath, "")
+		fmt.Printf("Footnotes section: %s\n", colorBlue(footnoteFilePath))
+
 		if err != nil {
 			log.Fatalf("Error adding footnotes: %v", err)
 		}
@@ -175,14 +184,16 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 		// Fix the HTML structure in the output
-		txt, err := cleanHTML(txt)
-		if err != nil {
-			fmt.Println("Error cleaning HTML:", err)
-		}
+		// txt, err := cleanHTML(txt)
+		// if err != nil {
+		// 	fmt.Println("Error cleaning HTML:", err)
+		// }
 
+		re := regexp.MustCompile("<h3.*?>.*")
+		newtxt := re.ReplaceAllString(txt, "")
 		// Add the main section
-		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
-		fmt.Println(sectionID)
+		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, newtxt), h, "", "")
+		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
 
 		// Process subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, subheadingTypes...)
@@ -298,12 +309,14 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	subsections := make([]string, 0, len(matches)+1)
 	lastIndex := 0
 	i := 0
+	re := regexp.MustCompile("<h2.*?>.*?<h")
 	for _, match := range matches {
 		i++ // Need to skip the first one, else we got h2 ..> h3 repeted in subsection
 		if i == 1 {
 			continue
 		}
-		subsections = append(subsections, content[lastIndex:match[0]])
+		newtxt := re.ReplaceAllString(content[lastIndex:match[0]], `<h`)
+		subsections = append(subsections, newtxt)
 		lastIndex = match[0]
 	}
 	// Add the remaining content after the last subheading tag
@@ -327,7 +340,7 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 
 		// Add the subsection under the parent section
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
-
+		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
 		// Process sub-subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, remainingSubheadingTypes...)
 	}
