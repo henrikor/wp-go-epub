@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/go-shiori/go-epub"
@@ -117,10 +118,10 @@ func main() {
 	// Process content based on the specified heading type
 	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
 
-	footnotes, err = cleanHTML(footnotes)
-	if err != nil {
-		fmt.Println("Error cleaning HTML:", err)
-	}
+	// footnotes, err = cleanHTML(footnotes)
+	// if err != nil {
+	// 	fmt.Println("Error cleaning HTML:", err)
+	// }
 
 	// Add footnotes to the end of the book
 
@@ -180,7 +181,9 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		if strings.TrimSpace(section) == "" {
 			continue
 		}
-		h, txt := fixHeading(section, rehh)
+		h, txt, hnr := fixHeading(section, rehh)
+		fmt.Printf("%s: %v: %s\n", colorRed("------------------ Section"), hnr, h)
+
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 		// Fix the HTML structure in the output
@@ -189,14 +192,14 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		// 	fmt.Println("Error cleaning HTML:", err)
 		// }
 
-		re := regexp.MustCompile("<h3.*?>.*")
-		newtxt := re.ReplaceAllString(txt, "")
+		// re := regexp.MustCompile("<h3.*?>.*")
+		// newtxt := re.ReplaceAllString(txt, "")
 		// Add the main section
-		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, newtxt), h, "", "")
+		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
 		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
 
 		// Process subsections recursively
-		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, subheadingTypes...)
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, subheadingTypes...)
 
 		// Append footnotes to the main footnotes content
 		footnotes.WriteString(sectionFootnotes)
@@ -206,18 +209,28 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 	return footnotes.String()
 }
 
-func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
+func fixHeading(section string, rehh *regexp.Regexp) (string, string, int) {
 	// Find heading content
 	matches := rehh.FindStringSubmatch(section)
+	re := regexp.MustCompile(`<h(\d)>`)
+
 	var heading string
+	hnr := 0
+	var err error
 	if len(matches) > 0 {
 		heading = matches[1]
+		a := re.FindStringSubmatch(section)
+		if len(a) > 0 {
+			hnr, err = strconv.Atoi(a[1])
+			if err != nil {
+				color.Errorf("failed to convert heading number to int: %v", err)
+			}
+		}
 		heading = removeHTMLTags(heading)
-		fmt.Println(heading)
 	} else {
 		fmt.Println("No match found")
 	}
-	return heading, section
+	return heading, section, hnr
 }
 
 func replaceFootnotes(input string, footnoteCount *int) (string, string) {
@@ -289,7 +302,7 @@ func removePTags(input string) string {
 
 	return output
 }
-func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, subheadingTypes ...string) {
+func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
 	}
@@ -308,22 +321,39 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	// Extract content between specified subheading tags
 	subsections := make([]string, 0, len(matches)+1)
 	lastIndex := 0
-	i := 0
-	re := regexp.MustCompile("<h2.*?>.*?<h")
-	for _, match := range matches {
-		i++ // Need to skip the first one, else we got h2 ..> h3 repeted in subsection
+	// re := regexp.MustCompile("<h2.*?>.*?<h")
+	// re := regexp.MustCompile(fmt.Sprintf(`<%s.*?>.*?</%s>(.*?)<h`, subheadingType, subheadingType))
+	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType))
+	regHeadNumber := regexp.MustCompile(`<h(\d)>`)
+
+	for i, match := range matches {
 		if i == 1 {
 			continue
 		}
-		newtxt := re.ReplaceAllString(content[lastIndex:match[0]], `<h`)
-		subsections = append(subsections, newtxt)
+		// h, _, _ := fixHeading(content[lastIndex:match[0]], rehh)
+		// if h == previousHeading {
+		// 	continue
+		// }
+
+		subsections = append(subsections, content[lastIndex:match[0]])
 		lastIndex = match[0]
+		// newtxt := re.ReplaceAllString(content[lastIndex:match[0]], `<h`)
+		// matches2 := re.FindStringSubmatch(content[lastIndex:match[0]])
+
+		// var newtxt string
+		// if len(matches2) >= 1 {
+		// 	newtxt = matches2[1]
+		// } else {
+		// 	newtxt = "FANT IKKE: txt"
+		// }
+
+		// subsections = append(subsections, txt)
+		// lastIndex = match[0]
 	}
 	// Add the remaining content after the last subheading tag
 	subsections = append(subsections, content[lastIndex:])
 
 	// Compile regex for extracting text within specified subheading tags
-	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType))
 
 	// Loop through subsections and process each one
 	for _, subsection := range subsections {
@@ -331,18 +361,81 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		if strings.TrimSpace(subsection) == "" {
 			continue
 		}
-		h, txt := fixHeading(subsection, rehh)
+		h, txt, hnr := fixHeading(subsection, rehh)
+		fmt.Printf("%s: %v: %s\n", colorYellow("------------------ SubSection"), hnr, h)
+		if h == "" && strings.Contains(txt, previousHeading) {
+			color.Warnf("WARNING: SKIPPING: %s\n", h)
+			color.Warnln(txt)
+			continue
+		}
+
 		txt, _ = replaceFootnotes(txt, new(int))
-		txt, err := cleanHTML(txt)
-		if err != nil {
-			fmt.Println("Error cleaning HTML:", err)
+		// txt, err := cleanHTML(txt)
+		// if err != nil {
+		// 	fmt.Println("Error cleaning HTML:", err)
+		// }
+		// Opprett regulært uttrykk med en gruppe
+		re := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)<h.*`, h))
+		reh01 := regexp.MustCompile(`<h.*?>.*?</h.>`)
+		re02 := regexp.MustCompile(`<h.*?>.*?<h`)
+		// re2 := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)`, h))
+		// fmt.Printf("h: %s", colorRed(h))
+		// Finn første match og grupper
+
+		var newtxt string
+		m1 := re.FindStringSubmatch(txt)
+		var v string
+		var i int
+		if len(m1) >= 1 {
+			for i, v = range m1 {
+				if i == 0 {
+					continue
+				}
+
+				res := re02.FindAllString(v, -1)
+				if len(res) != 0 {
+					for _, v := range res {
+						a := regHeadNumber.FindStringSubmatch(v)
+						if len(a) > 0 {
+							// subhnr, err := strconv.Atoi(a[1])
+							// if err != nil {
+							// 	log.Fatalf("failed to convert heading number to int in range res: %v", err)
+							// }
+							// if subhnr != hnr {
+							// 	v = re02.ReplaceAllString(v, `<h`)
+							// }
+						}
+
+						fmt.Printf("%s: %s\n", colorRed("heading found: "), colorYellow(v))
+
+						// color.Println(txt)
+
+					}
+				}
+
+				fmt.Printf("%s %v:\n %s\n\n", colorBlue("Got match on RE:"), i, v)
+			}
+			newtxt = v
+		} else {
+			// skillelinje := "================================================"
+			// newtxt = fmt.Sprintf("%s \n %s\n %s \n", skillelinje, txt, skillelinje)
+			// fmt.Print(newtxt)
+			res := reh01.FindAllString(txt, -1)
+			if len(res) != 0 {
+				for _, v := range res {
+					fmt.Printf("%s: %s\n", colorYellow("heading found: "), colorRed(v))
+					// color.Println(txt)
+
+				}
+			}
+			newtxt = txt
 		}
 
 		// Add the subsection under the parent section
-		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, newtxt), h, "", "")
 		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
 		// Process sub-subsections recursively
-		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, remainingSubheadingTypes...)
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, remainingSubheadingTypes...)
 	}
 }
 
