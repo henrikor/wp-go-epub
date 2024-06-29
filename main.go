@@ -370,20 +370,15 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		}
 
 		txt, _ = replaceFootnotes(txt, new(int))
-		// txt, err := cleanHTML(txt)
-		// if err != nil {
-		// 	fmt.Println("Error cleaning HTML:", err)
-		// }
-		// Opprett regulært uttrykk med en gruppe
-		re := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)<h.*`, h))
+		re := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)(<h.*)`, h))
+
 		reh01 := regexp.MustCompile(`<h.*?>.*?</h.>`)
 		re02 := regexp.MustCompile(`<h.*?>.*?<h`)
-		// re2 := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)`, h))
-		// fmt.Printf("h: %s", colorRed(h))
 		// Finn første match og grupper
-
 		var newtxt string
 		m1 := re.FindStringSubmatch(txt)
+		toDelete := m1[2]
+		newtxt = strings.Replace(txt, toDelete, "", -1)
 		var v string
 		var i int
 		if len(m1) >= 1 {
