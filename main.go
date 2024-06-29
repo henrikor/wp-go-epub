@@ -324,7 +324,6 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	// re := regexp.MustCompile("<h2.*?>.*?<h")
 	// re := regexp.MustCompile(fmt.Sprintf(`<%s.*?>.*?</%s>(.*?)<h`, subheadingType, subheadingType))
 	rehh := regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, subheadingType, subheadingType))
-	regHeadNumber := regexp.MustCompile(`<h(\d)>`)
 
 	for i, match := range matches {
 		if i == 1 {
@@ -334,6 +333,12 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		// if h == previousHeading {
 		// 	continue
 		// }
+
+		for g, k := range match {
+			fmt.Println("/////////////////////////////////////////////////////////////////////////////////////////////")
+			fmt.Printf("g: %v, k: %v \n", g, k)
+			fmt.Println("/////////////////////////////////////////////////////////////////////////////////////////////")
+		}
 
 		subsections = append(subsections, content[lastIndex:match[0]])
 		lastIndex = match[0]
@@ -372,60 +377,17 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		txt, _ = replaceFootnotes(txt, new(int))
 		re := regexp.MustCompile(fmt.Sprintf(`(<h.*?>\s*?%s\s*?</h.>.*?)(<h.*)`, h))
 
-		reh01 := regexp.MustCompile(`<h.*?>.*?</h.>`)
-		re02 := regexp.MustCompile(`<h.*?>.*?<h`)
 		// Finn første match og grupper
 		var newtxt string
 		m1 := re.FindStringSubmatch(txt)
-		toDelete := m1[2]
-		newtxt = strings.Replace(txt, toDelete, "", -1)
-		var v string
-		var i int
-		if len(m1) >= 1 {
-			for i, v = range m1 {
-				if i == 0 {
-					continue
-				}
-
-				res := re02.FindAllString(v, -1)
-				if len(res) != 0 {
-					for _, v := range res {
-						a := regHeadNumber.FindStringSubmatch(v)
-						if len(a) > 0 {
-							// subhnr, err := strconv.Atoi(a[1])
-							// if err != nil {
-							// 	log.Fatalf("failed to convert heading number to int in range res: %v", err)
-							// }
-							// if subhnr != hnr {
-							// 	v = re02.ReplaceAllString(v, `<h`)
-							// }
-						}
-
-						fmt.Printf("%s: %s\n", colorRed("heading found: "), colorYellow(v))
-
-						// color.Println(txt)
-
-					}
-				}
-
-				fmt.Printf("%s %v:\n %s\n\n", colorBlue("Got match on RE:"), i, v)
-			}
-			newtxt = v
+		if len(m1) > 1 {
+			toDelete := m1[2]
+			color.Warnf("WARNING: deleting %s \n", toDelete)
+			// newtxt = strings.Replace(txt, toDelete, "", -1)
+			newtxt = txt
 		} else {
-			// skillelinje := "================================================"
-			// newtxt = fmt.Sprintf("%s \n %s\n %s \n", skillelinje, txt, skillelinje)
-			// fmt.Print(newtxt)
-			res := reh01.FindAllString(txt, -1)
-			if len(res) != 0 {
-				for _, v := range res {
-					fmt.Printf("%s: %s\n", colorYellow("heading found: "), colorRed(v))
-					// color.Println(txt)
-
-				}
-			}
 			newtxt = txt
 		}
-
 		// Add the subsection under the parent section
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, newtxt), h, "", "")
 		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
