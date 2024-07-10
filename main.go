@@ -148,22 +148,27 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		return ""
 	}
 
-	sections := extractSections(content, matches)
+	sections, _ := extractSections(content, matches)
 	rehh := compileHeadingRegex(headingType)
 	var footnotes strings.Builder
 	footnoteCount := 1
 
-	for _, section := range sections {
+	// sectionRe := regexp.MustCompile(`(<h.*?>.*?)<h`)
+
+	for nr, section := range sections {
 		if strings.TrimSpace(section) == "" {
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
-		fmt.Printf("%s: %s\n", colorRed("------------------ Section"), h)
+		fmt.Printf("%s nr %v: %s\n", colorRed("------------------ Section"), nr, h)
 
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 
-		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+		appendTxt := getOnlyStartSection(txt)
+		color.Bluef("Atxt: %s \n", appendTxt)
+
+		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
 		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
 
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, subheadingTypes...)
@@ -172,6 +177,17 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 	}
 
 	return footnotes.String()
+}
+
+func getOnlyStartSection(htmlContent string) string {
+	// Regex for å matche første overskrift og all tekst fram til neste overskrift eller slutten av strengen
+	re := regexp.MustCompile(`(?s)(<h[1-6][^>]*>.*?</h[1-6]>.*?)(<h[1-6][^>]*>|$)`)
+	matches := re.FindStringSubmatch(htmlContent)
+
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
 }
 
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, subheadingTypes ...string) {
@@ -187,26 +203,22 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		return
 	}
 
-	subsections := extractSections(content, matches)
+	subsections, _ := extractSections(content, matches)
 	rehh := compileHeadingRegex(subheadingType)
 
 	for nr, subsection := range subsections {
-		if strings.TrimSpace(subsection) == "" {
+		if strings.TrimSpace(subsection) == "" || nr == 0 {
 			continue
 		}
 		h, txt := fixHeading(subsection, rehh)
-		fmt.Printf("%s: %s nr: %v\n", colorYellow("------------------ SubSection"), h, nr)
+		fmt.Printf("%s: %v nr: %s\n", colorYellow("------------------ SubSection"), nr, h)
 		if h == "" && strings.Contains(txt, previousHeading) {
 			color.Warnf("WARNING: SKIPPING: %s\n", h)
 		}
 
 		txt, _ = replaceFootnotes(txt, new(int))
-		var appendTxt string
-		if nr == 0 {
-			appendTxt = subsection
-		} else {
-			appendTxt = txt
-		}
+		appendTxt := getOnlyStartSection(txt)
+
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
 		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, remainingSubheadingTypes...)
@@ -218,18 +230,26 @@ func findMatches(content, headingType string) [][]int {
 	return reh.FindAllStringIndex(content, -1)
 }
 
-func extractSections(content string, matches [][]int) []string {
+func extractSections(content string, matches [][]int) ([]string, string) {
+	var firstSection string
 	sections := make([]string, 0, len(matches)+1)
 	lastIndex := 0
-	for _, match := range matches {
+	for x, match := range matches {
+		if x == 0 {
+			firstSection = content[lastIndex:match[0]]
+			// continue
+		}
 		sections = append(sections, content[lastIndex:match[0]])
 		lastIndex = match[0]
 	}
 	sections = append(sections, content[lastIndex:])
-	return sections
+	return sections, firstSection
 }
 
 func compileHeadingRegex(headingType string) *regexp.Regexp {
+	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
+}
+func compileSectionRegex(headingType string) *regexp.Regexp {
 	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
 }
 
