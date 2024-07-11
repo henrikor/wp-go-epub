@@ -143,12 +143,11 @@ func prepareContent(content string, removeBr bool) string {
 func processContent(content string, e *epub.Epub, cssPath, headingType string, subheadingTypes ...string) string {
 	matches := findMatches(content, headingType)
 
+	sections, _ := extractSections(content, matches, true)
 	if len(sections) == 0 {
 		fmt.Printf("No <%s> tags found in the text.\n", headingType)
 		return ""
 	}
-
-	sections, _ := extractSections(content, matches, true)
 	rehh := compileHeadingRegex(headingType)
 	var footnotes strings.Builder
 	footnoteCount := 1
