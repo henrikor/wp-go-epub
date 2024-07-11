@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"strconv"
 	"strings"
 
 	"github.com/go-shiori/go-epub"
@@ -23,18 +22,62 @@ var (
 )
 
 func main() {
-	// Parse command line flags
 	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr := manageFlag()
 
-	// Create a new EPUB
-	e, err := epub.NewEpub(*title)
+	e, err := createEpub(*title, *author)
 	if err != nil {
 		log.Fatalf("Failed to create EPUB: %v", err)
 	}
-	e.SetAuthor(*author)
-	e.SetTitle(*title)
 
-	// Add CSS to the EPUB
+	cssFilePath, err := createCSSFile()
+	if err != nil {
+		log.Fatalf("Error writing CSS file: %v", err)
+	}
+	defer os.Remove(cssFilePath)
+
+	cssPath, err := e.AddCSS(cssFilePath, "")
+	if err != nil {
+		log.Fatalf("Error adding CSS: %v", err)
+	}
+
+	wpFilePath := filepath.Join(*wpFolder, *wpFile)
+	epubFilePath := filepath.Join(*epubFolder, *epubFile)
+
+	content, err := os.ReadFile(wpFilePath)
+	if err != nil {
+		log.Fatalf("Error reading file: %v", err)
+	}
+
+	ncontent := prepareContent(string(content), *removeBr)
+
+	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
+
+	if footnotes != "" {
+		_, err := e.AddSection(footnotes, "Footnotes", footnoteFilePath, "")
+		fmt.Printf("Footnotes section: %s\n", colorBlue(footnoteFilePath))
+		if err != nil {
+			log.Fatalf("Error adding footnotes: %v", err)
+		}
+	}
+
+	err = e.Write(epubFilePath)
+	if err != nil {
+		log.Fatalf("Error writing EPUB: %v", err)
+	}
+	fmt.Println("EPUB created successfully.")
+}
+
+func createEpub(title, author string) (*epub.Epub, error) {
+	e, err := epub.NewEpub(title)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create EPUB: %w", err)
+	}
+	e.SetAuthor(author)
+	e.SetTitle(title)
+	return e, nil
+}
+
+func createCSSFile() (string, error) {
 	css := `
 		body {
 			font-family: Arial, sans-serif;
@@ -81,192 +124,80 @@ func main() {
 		}
 	`
 	cssFilePath := "styles.css"
-	err = os.WriteFile(cssFilePath, []byte(css), 0644)
+	err := os.WriteFile(cssFilePath, []byte(css), 0644)
 	if err != nil {
-		log.Fatalf("Error writing CSS file: %v", err)
+		return "", fmt.Errorf("error writing CSS file: %w", err)
 	}
+	return cssFilePath, nil
+}
 
-	cssPath, err := e.AddCSS(cssFilePath, "")
-	if err != nil {
-		log.Fatalf("Error adding CSS: %v", err)
-	}
-
-	// Get the path of the file
-	wpFilePath := filepath.Join(*wpFolder, *wpFile)
-	epubFilePath := filepath.Join(*epubFolder, *epubFile)
-
-	// Read the content of the file
-	content, err := os.ReadFile(wpFilePath)
-	if err != nil {
-		log.Fatalf("Error reading file: %v", err)
-	}
-
-	// Replace HTML entities
-	ncontent := strings.Replace(string(content), "&nbsp;", " ", -1)
+func prepareContent(content string, removeBr bool) string {
+	ncontent := strings.Replace(content, "&nbsp;", " ", -1)
 	ncontent = removePTags(ncontent)
-
-	// Remove <br> elements if the flag is set
-	if *removeBr {
+	if removeBr {
 		ncontent = removeBrElements(ncontent)
 	}
-
-	// Remove unnecessary line breaks
-	ncontent = removeExtraLineBreaks(ncontent)
-
-	// Process content based on the specified heading type
-	footnotes := processContent(ncontent, e, cssPath, *headingType, "h3", "h4", "h5", "h6")
-
-	// footnotes, err = cleanHTML(footnotes)
-	// if err != nil {
-	// 	fmt.Println("Error cleaning HTML:", err)
-	// }
-
-	// Add footnotes to the end of the book
-
-	if footnotes != "" {
-		_, err := e.AddSection(footnotes, "Footnotes", footnoteFilePath, "")
-		fmt.Printf("Footnotes section: %s\n", colorBlue(footnoteFilePath))
-
-		if err != nil {
-			log.Fatalf("Error adding footnotes: %v", err)
-		}
-	}
-
-	// Write the EPUB
-	err = e.Write(epubFilePath)
-	if err != nil {
-		log.Fatalf("Error writing EPUB: %v", err)
-	}
-	fmt.Println("EPUB created successfully.")
-
-	// Clean up the temporary CSS file
-	err = os.Remove(cssFilePath)
-	if err != nil {
-		log.Printf("Warning: Unable to remove temporary CSS file: %v", err)
-	}
+	return removeExtraLineBreaks(ncontent)
 }
 
 func processContent(content string, e *epub.Epub, cssPath, headingType string, subheadingTypes ...string) string {
-	// Split content by the specified heading tag
-	sections := strings.SplitAfter(content, fmt.Sprintf("<%s", headingType))
+	matches := findMatches(content, headingType)
 
 	if len(sections) == 0 {
 		fmt.Printf("No <%s> tags found in the text.\n", headingType)
 		return ""
 	}
 
-	// Initialize footnote content
+	sections, _ := extractSections(content, matches, true)
+	rehh := compileHeadingRegex(headingType)
 	var footnotes strings.Builder
 	footnoteCount := 1
 
-	// Loop through sections and process each one
-	for _, section := range sections {
-		// Skip empty sections
+	// sectionRe := regexp.MustCompile(`(<h.*?>.*?)<h`)
+
+	for nr, section := range sections {
 		if strings.TrimSpace(section) == "" {
 			continue
 		}
-		section = cleanSection(section, headingType)
-		h, txt, hnr := fixHeading(section)
-		fmt.Printf("%s: %v: %s\n", colorRed("------------------ Section"), hnr, h)
+		h, txt := fixHeading(section, rehh)
+		fmt.Printf("%s nr %v: %s\n", colorRed("------------------ Section"), nr, h)
 
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 
-		// Add the main section
-		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+		var appendTxt string
+		if nr == 0 {
+			appendTxt = txt
+			color.Redf("txt: %s\n", txt)
+		} else {
+			appendTxt = getOnlyStartSection(txt)
+		}
+		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
 		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
 
-		// Process subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, subheadingTypes...)
 
-		// Append footnotes to the main footnotes content
 		footnotes.WriteString(sectionFootnotes)
 	}
 
-	// Return the main content and footnotes
 	return footnotes.String()
 }
 
-func cleanSection(section string, headingType string) string {
-	section = strings.Replace(section, `class="wp-block-heading">`, "", 1)
-	section = fmt.Sprintf("<%s>", headingType) + section
-	return section
-}
+func getOnlyStartSection(htmlContent string) string {
+	// Regex for å matche første overskrift og all tekst fram til neste overskrift eller slutten av strengen
+	re := regexp.MustCompile(`(?s)(<h[1-6][^>]*>.*?</h[1-6]>.*?)(<h[1-6][^>]*>|$)`)
+	matches := re.FindStringSubmatch(htmlContent)
 
-func fixHeading(section string) (string, string, int) {
-	// Find heading content
-	// re := regexp.MustCompile(`<h(\d)>`)
-	rehh := regexp.MustCompile(`<h(\d).*?>(.*?)</h\d>`)
-
-	matches := rehh.FindStringSubmatch(section)
-
-	var heading string
-	hnr := 0
-	var err error
-	if len(matches) > 0 {
-		heading = matches[2]
-		hnr, err = strconv.Atoi(matches[1])
-		if err != nil {
-			color.Errorf("failed to convert heading number to int: %v", err)
-		}
-		heading = removeHTMLTags(heading)
-	} else {
-		fmt.Println("No match found")
+	if len(matches) > 1 {
+		return matches[1]
 	}
-	return heading, section, hnr
-}
-
-func replaceFootnotes(input string, footnoteCount *int) (string, string) {
-	// Compile regex to find footnote patterns
-	re := regexp.MustCompile(`\(\((.*?)\)\)`)
-
-	// Initialize a builder for footnotes content
-	var footnotes strings.Builder
-
-	// Replace each footnote pattern with the appropriate HTML
-	output := re.ReplaceAllStringFunc(input, func(match string) string {
-		// Generate footnote ID
-		footnoteID := fmt.Sprintf("footnote_%d", *footnoteCount)
-		footnoteText := match[2 : len(match)-2] // Extract footnote text
-
-		// Append the footnote to the footnotes builder
-		footnotes.WriteString(fmt.Sprintf(`<p id="%s">%d: %s</p>`, footnoteID, *footnoteCount, footnoteText))
-
-		// Increment the footnote count
-		(*footnoteCount)++
-
-		// Return the superscript link to the footnote and ePub3 popup
-		return fmt.Sprintf(
-			`<sup><a href="#%s" epub:type="noteref" id="ref_%d">%d</a></sup><aside id="%s" epub:type="footnote">%s</aside>`,
-			footnoteID, *footnoteCount-1, *footnoteCount-1, footnoteID, footnoteText,
-		)
-	})
-
-	// Return the text with footnote references and the footnotes content
-	return output, footnotes.String()
-}
-
-func removePTags(input string) string {
-	// Compile regex to find patterns between (( and ))
-	re := regexp.MustCompile(`\(\((.*?)\)\)`)
-
-	// Replace function to remove <p> and </p> tags
-	replacer := func(match string) string {
-		// Extract the content between (( and ))
-		content := match[2 : len(match)-2]
-
-		// Remove <p> and </p> tags
-		cleanedContent := strings.ReplaceAll(content, "<p.*?>", "")
-		cleanedContent = strings.ReplaceAll(cleanedContent, "</p.*?>", "")
-
-		// Return the cleaned content wrapped in (())
-		return "((" + cleanedContent + "))"
+	// Hvis vi ikke finner en andre overskrift, returner all teksten
+	reAll := regexp.MustCompile(`(?s)(<h[1-6][^>]*>.*?</h[1-6]>.*)`)
+	matchesAll := reAll.FindStringSubmatch(htmlContent)
+	if len(matchesAll) > 1 {
+		return matchesAll[1]
 	}
-
-	// Apply the replacer function to all matches
-	output := re.ReplaceAllStringFunc(input, replacer)
-
-	return output
+	return ""
 }
 
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, subheadingTypes ...string) {
@@ -277,33 +208,115 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 	subheadingType := subheadingTypes[0]
 	remainingSubheadingTypes := subheadingTypes[1:]
 
-	// Split content by the specified subheading tag
-	subsections := strings.SplitAfter(content, fmt.Sprintf("<%s", subheadingType))
+	matches := findMatches(content, subheadingType)
+	if len(matches) == 0 {
+		return
+	}
 
-	// Loop through subsections and process each one
-	for _, subsection := range subsections {
-		// Skip empty subsections
-		if strings.TrimSpace(subsection) == "" {
+	subsections, _ := extractSections(content, matches, false)
+	rehh := compileHeadingRegex(subheadingType)
+
+	for nr, subsection := range subsections {
+		if strings.TrimSpace(subsection) == "" || nr == 0 {
 			continue
 		}
-		subsection = cleanSection(subsection, subheadingType)
-
-		h, txt, hnr := fixHeading(subsection)
-		fmt.Printf("%s: %v: %s\n", colorYellow("------------------ SubSection"), hnr, h)
+		h, txt := fixHeading(subsection, rehh)
+		fmt.Printf("%s: %v nr: %s\n", colorYellow("------------------ SubSection"), nr, h)
 		if h == "" && strings.Contains(txt, previousHeading) {
 			color.Warnf("WARNING: SKIPPING: %s\n", h)
-			color.Warnln(txt)
-			continue
 		}
 
 		txt, _ = replaceFootnotes(txt, new(int))
+		appendTxt := getOnlyStartSection(txt)
 
-		// Add the subsection under the parent section
-		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), h, "", "")
+		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
 		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
-		// Process sub-subsections recursively
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, remainingSubheadingTypes...)
 	}
+}
+
+func findMatches(content, headingType string) [][]int {
+	reh := regexp.MustCompile(fmt.Sprintf(`(?s)<%s.*?>.*?</%s>`, headingType, headingType))
+	return reh.FindAllStringIndex(content, -1)
+}
+
+func extractSections(content string, matches [][]int, addTxtWithoutHeading bool) ([]string, string) {
+	var firstSection string
+	var noHeadingTxt string
+	if addTxtWithoutHeading {
+		noHeadingTxt = content[:matches[0][0]]
+		color.Bluef("noHeadingTxt %s", noHeadingTxt)
+	}
+	sections := make([]string, 0, len(matches)+1)
+	if addTxtWithoutHeading && strings.Contains(noHeadingTxt, `\w`) {
+		sections = append(sections, noHeadingTxt)
+	}
+
+	lastIndex := 0
+	for x, match := range matches {
+		if x == 0 {
+			firstSection = content[lastIndex:match[0]]
+			// continue
+		}
+		sections = append(sections, content[lastIndex:match[0]])
+		lastIndex = match[0]
+	}
+	sections = append(sections, content[lastIndex:])
+	return sections, firstSection
+}
+
+func compileHeadingRegex(headingType string) *regexp.Regexp {
+	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
+}
+func compileSectionRegex(headingType string) *regexp.Regexp {
+	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
+}
+
+func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
+	matches := rehh.FindStringSubmatch(section)
+
+	var heading string
+	if len(matches) > 0 {
+		heading = matches[1]
+		heading = removeHTMLTags(heading)
+	} else {
+		fmt.Println("No match found")
+	}
+	return heading, section
+}
+
+func replaceFootnotes(input string, footnoteCount *int) (string, string) {
+	re := regexp.MustCompile(`\(\((.*?)\)\)`)
+	var footnotes strings.Builder
+
+	output := re.ReplaceAllStringFunc(input, func(match string) string {
+		footnoteID := fmt.Sprintf("footnote_%d", *footnoteCount)
+		footnoteText := match[2 : len(match)-2]
+
+		footnotes.WriteString(fmt.Sprintf(`<p id="%s">%d: %s</p>`, footnoteID, *footnoteCount, footnoteText))
+
+		(*footnoteCount)++
+
+		return fmt.Sprintf(
+			`<sup><a href="#%s" epub:type="noteref" id="ref_%d">%d</a></sup><aside id="%s" epub:type="footnote">%s</aside>`,
+			footnoteID, *footnoteCount-1, *footnoteCount-1, footnoteID, footnoteText,
+		)
+	})
+
+	return output, footnotes.String()
+}
+
+func removePTags(input string) string {
+	re := regexp.MustCompile(`\(\((.*?)\)\)`)
+
+	replacer := func(match string) string {
+		content := match[2 : len(match)-2]
+		cleanedContent := strings.ReplaceAll(content, "<p.*?>", "")
+		cleanedContent = strings.ReplaceAll(cleanedContent, "</p.*?>", "")
+		return "((" + cleanedContent + "))"
+	}
+
+	return re.ReplaceAllStringFunc(input, replacer)
 }
 
 func removeBrElements(input string) string {
