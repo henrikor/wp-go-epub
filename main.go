@@ -148,7 +148,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		return ""
 	}
 
-	sections, _ := extractSections(content, matches)
+	sections, _ := extractSections(content, matches, true)
 	rehh := compileHeadingRegex(headingType)
 	var footnotes strings.Builder
 	footnoteCount := 1
@@ -165,9 +165,13 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
 
-		appendTxt := getOnlyStartSection(txt)
-		color.Bluef("Atxt: %s \n", appendTxt)
-
+		var appendTxt string
+		if nr == 0 {
+			appendTxt = txt
+			color.Redf("txt: %s\n", txt)
+		} else {
+			appendTxt = getOnlyStartSection(txt)
+		}
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
 		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
 
@@ -187,9 +191,14 @@ func getOnlyStartSection(htmlContent string) string {
 	if len(matches) > 1 {
 		return matches[1]
 	}
+	// Hvis vi ikke finner en andre overskrift, returner all teksten
+	reAll := regexp.MustCompile(`(?s)(<h[1-6][^>]*>.*?</h[1-6]>.*)`)
+	matchesAll := reAll.FindStringSubmatch(htmlContent)
+	if len(matchesAll) > 1 {
+		return matchesAll[1]
+	}
 	return ""
 }
-
 func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
@@ -203,7 +212,7 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 		return
 	}
 
-	subsections, _ := extractSections(content, matches)
+	subsections, _ := extractSections(content, matches, false)
 	rehh := compileHeadingRegex(subheadingType)
 
 	for nr, subsection := range subsections {
@@ -230,9 +239,18 @@ func findMatches(content, headingType string) [][]int {
 	return reh.FindAllStringIndex(content, -1)
 }
 
-func extractSections(content string, matches [][]int) ([]string, string) {
+func extractSections(content string, matches [][]int, addTxtWithoutHeading bool) ([]string, string) {
 	var firstSection string
+	var noHeadingTxt string
+	if addTxtWithoutHeading {
+		noHeadingTxt = content[:matches[0][0]]
+		color.Bluef("noHeadingTxt %s", noHeadingTxt)
+	}
 	sections := make([]string, 0, len(matches)+1)
+	if addTxtWithoutHeading && strings.Contains(noHeadingTxt, `\w`) {
+		sections = append(sections, noHeadingTxt)
+	}
+
 	lastIndex := 0
 	for x, match := range matches {
 		if x == 0 {
