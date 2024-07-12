@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-shiori/go-epub"
 	"github.com/gookit/color"
@@ -19,25 +20,28 @@ var (
 	colorBlue        = color.FgBlue.Render
 	colorYellow      = color.FgYellow.Render
 	colorGreen       = color.Green.Render
+	logger           *log.Logger
 )
 
 func main() {
-	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr := manageFlag()
+
+	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir := manageFlag()
+	setupLogging(*logdir)
 
 	e, err := createEpub(*title, *author)
 	if err != nil {
-		log.Fatalf("Failed to create EPUB: %v", err)
+		logger.Fatalf("Failed to create EPUB: %v", err)
 	}
 
 	cssFilePath, err := createCSSFile()
 	if err != nil {
-		log.Fatalf("Error writing CSS file: %v", err)
+		logger.Fatalf("Error writing CSS file: %v", err)
 	}
 	defer os.Remove(cssFilePath)
 
 	cssPath, err := e.AddCSS(cssFilePath, "")
 	if err != nil {
-		log.Fatalf("Error adding CSS: %v", err)
+		logger.Fatalf("Error adding CSS: %v", err)
 	}
 
 	wpFilePath := filepath.Join(*wpFolder, *wpFile)
@@ -45,7 +49,7 @@ func main() {
 
 	content, err := os.ReadFile(wpFilePath)
 	if err != nil {
-		log.Fatalf("Error reading file: %v", err)
+		logger.Fatalf("Error reading file: %v", err)
 	}
 
 	ncontent := prepareContent(string(content), *removeBr)
@@ -54,17 +58,57 @@ func main() {
 
 	if footnotes != "" {
 		_, err := e.AddSection(footnotes, "Footnotes", footnoteFilePath, "")
-		fmt.Printf("Footnotes section: %s\n", colorBlue(footnoteFilePath))
+		logger.Printf("Footnotes section: %s\n", colorBlue(footnoteFilePath))
 		if err != nil {
-			log.Fatalf("Error adding footnotes: %v", err)
+			logger.Fatalf("Error adding footnotes: %v", err)
 		}
 	}
 
 	err = e.Write(epubFilePath)
 	if err != nil {
-		log.Fatalf("Error writing EPUB: %v", err)
+		logger.Fatalf("Error writing EPUB: %v", err)
 	}
-	fmt.Println("EPUB created successfully.")
+	logger.Println("EPUB created successfully.")
+}
+
+func setupLogging(logDir string) {
+	// Get current weekday
+	weekday := time.Now().Weekday().String()
+
+	// Create log directory if it doesn't exist
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		os.Mkdir(logDir, os.ModePerm)
+	}
+
+	// Define log file path
+	logFilePath := filepath.Join(logDir, fmt.Sprintf("%s.log", weekday))
+
+	// Check if log file exists and its modification time
+	var logFile *os.File
+	if stat, err := os.Stat(logFilePath); err == nil {
+		if time.Since(stat.ModTime()).Hours() > 24 {
+			// Overwrite if older than one day
+			logFile, err = os.Create(logFilePath)
+			if err != nil {
+				log.Fatalf("Failed to create log file: %v", err)
+			}
+		} else {
+			// Append if modified within the last day
+			logFile, err = os.OpenFile(logFilePath, os.O_APPEND|os.O_WRONLY, os.ModeAppend)
+			if err != nil {
+				log.Fatalf("Failed to open log file: %v", err)
+			}
+		}
+	} else {
+		// Create new log file if it doesn't exist
+		logFile, err = os.Create(logFilePath)
+		if err != nil {
+			log.Fatalf("Failed to create log file: %v", err)
+		}
+	}
+
+	// Set up the logger
+	logger = log.New(logFile, "", log.LstdFlags)
 }
 
 func createEpub(title, author string) (*epub.Epub, error) {
@@ -145,21 +189,19 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 
 	sections, _ := extractSections(content, matches, true)
 	if len(sections) == 0 {
-		fmt.Printf("No <%s> tags found in the text.\n", headingType)
+		logger.Printf("No <%s> tags found in the text.\n", headingType)
 		return ""
 	}
 	rehh := compileHeadingRegex(headingType)
 	var footnotes strings.Builder
 	footnoteCount := 1
 
-	// sectionRe := regexp.MustCompile(`(<h.*?>.*?)<h`)
-
 	for nr, section := range sections {
 		if strings.TrimSpace(section) == "" {
 			continue
 		}
 		h, txt := fixHeading(section, rehh)
-		fmt.Printf("%s nr %v: %s\n", colorRed("------------------ Section"), nr, h)
+		logger.Printf("%s nr %v: %s\n", colorRed("------------------ Section"), nr, h)
 
 		var sectionFootnotes string
 		txt, sectionFootnotes = replaceFootnotes(txt, &footnoteCount)
@@ -167,12 +209,12 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, s
 		var appendTxt string
 		if nr == 0 {
 			appendTxt = txt
-			color.Redf("txt: %s\n", txt)
+			logger.Printf("txt: %s\n", txt)
 		} else {
 			appendTxt = getOnlyStartSection(txt)
 		}
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
-		fmt.Printf("sectionID: %s\n", colorYellow(sectionID))
+		logger.Printf("sectionID: %s\n", colorYellow(sectionID))
 
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, subheadingTypes...)
 
@@ -220,16 +262,16 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 			continue
 		}
 		h, txt := fixHeading(subsection, rehh)
-		fmt.Printf("%s: %v nr: %s\n", colorYellow("------------------ SubSection"), nr, h)
+		logger.Printf("%s: %v nr: %s\n", colorYellow("------------------ SubSection"), nr, h)
 		if h == "" && strings.Contains(txt, previousHeading) {
-			color.Warnf("WARNING: SKIPPING: %s\n", h)
+			logger.Printf("WARNING: SKIPPING: %s\n", h)
 		}
 
 		txt, _ = replaceFootnotes(txt, new(int))
 		appendTxt := getOnlyStartSection(txt)
 
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, "", "")
-		fmt.Printf("subsectionID: %s\n", colorGreen(subsectionID))
+		logger.Printf("subsectionID: %s\n", colorGreen(subsectionID))
 		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, remainingSubheadingTypes...)
 	}
 }
@@ -242,9 +284,9 @@ func findMatches(content, headingType string) [][]int {
 func extractSections(content string, matches [][]int, addTxtWithoutHeading bool) ([]string, string) {
 	var firstSection string
 	var noHeadingTxt string
-	if addTxtWithoutHeading {
+	if addTxtWithoutHeading && len(matches) > 0 {
 		noHeadingTxt = content[:matches[0][0]]
-		color.Bluef("noHeadingTxt %s", noHeadingTxt)
+		logger.Printf("noHeadingTxt %s", noHeadingTxt)
 	}
 	sections := make([]string, 0, len(matches)+1)
 	if addTxtWithoutHeading && strings.Contains(noHeadingTxt, `\w`) {
@@ -255,7 +297,6 @@ func extractSections(content string, matches [][]int, addTxtWithoutHeading bool)
 	for x, match := range matches {
 		if x == 0 {
 			firstSection = content[lastIndex:match[0]]
-			// continue
 		}
 		sections = append(sections, content[lastIndex:match[0]])
 		lastIndex = match[0]
@@ -267,9 +308,6 @@ func extractSections(content string, matches [][]int, addTxtWithoutHeading bool)
 func compileHeadingRegex(headingType string) *regexp.Regexp {
 	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
 }
-func compileSectionRegex(headingType string) *regexp.Regexp {
-	return regexp.MustCompile(fmt.Sprintf(`<%s.*?>(.*?)</%s>`, headingType, headingType))
-}
 
 func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
 	matches := rehh.FindStringSubmatch(section)
@@ -279,7 +317,7 @@ func fixHeading(section string, rehh *regexp.Regexp) (string, string) {
 		heading = matches[1]
 		heading = removeHTMLTags(heading)
 	} else {
-		fmt.Println("No match found")
+		logger.Println("No match found")
 	}
 	return heading, section
 }
@@ -333,7 +371,7 @@ func removeHTMLTags(input string) string {
 	return re.ReplaceAllString(input, "")
 }
 
-func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool) {
+func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool, *string) {
 	author := flag.String("author", "", "the author of the EPUB")
 	title := flag.String("title", "", "the title of the EPUB")
 	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
@@ -341,12 +379,13 @@ func manageFlag() (*string, *string, *string, *string, *string, *string, *string
 	wpFolder := flag.String("wpfolder", "", "the path to a folder containing the file")
 	epubFolder := flag.String("epubfolder", "", "the path to a folder containing the file")
 	headingType := flag.String("headingtype", "h2", "the type of heading to look for (e.g., h2, h3, h4)")
+	logdir := flag.String("logdir", "", "Path to the log directory")
 	removeBr := flag.Bool("br", false, "remove <br> elements from the content")
 	flag.Parse()
 
-	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" {
+	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" || *logdir == "" {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr
+	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir
 }
