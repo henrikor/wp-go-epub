@@ -1,0 +1,37 @@
+# .goreleaser.yaml
+project_name: wp-go-epub
+builds:
+  - id: linux_amd64
+    main: ./cmd/main.go
+    goos:
+      - linux
+    goarch:
+      - amd64
+    env:
+      - CGO_ENABLED=0
+archives:
+  - id: linux_amd64
+    builds:
+      - linux_amd64
+    format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_linux_amd64"
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+release:
+  github:
+    owner: henrkor
+    name: wp-go-epub
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+before:
+  hooks:
+    - go mod tidy

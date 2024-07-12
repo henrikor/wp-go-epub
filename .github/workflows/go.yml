@@ -1,4 +1,4 @@
-# This workflow will build a golang project
+# This workflow will build a golang project and create a release
 # For more information see: https://docs.github.com/en/actions/automating-builds-and-tests/building-and-testing-go
 
 name: Go
@@ -25,3 +25,11 @@ jobs:
 
     - name: Test
       run: go test -v ./...
+
+    - name: Install GoReleaser
+      run: curl -sL https://git.io/goreleaser | bash
+
+    - name: Run GoReleaser
+      run: goreleaser release --rm-dist
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
