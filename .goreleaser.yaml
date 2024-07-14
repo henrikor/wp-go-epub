@@ -1,7 +1,7 @@
 # .goreleaser.yaml
 version: 2
 
-project_name: ditt_prosjekt_navn
+project_name: wp-go-epub
 
 builds:
   - id: linux_amd64
@@ -30,9 +30,8 @@ archives:
 
 release:
   github:
-    owner: ditt_github_brukernavn
-    name: ditt_repositorienavn
-    token: "{{ .Env.GITHUB_TOKEN }}"
+    owner: henrikor
+    name: wp-go-epub
 
 changelog:
   sort: asc
