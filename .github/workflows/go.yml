@@ -11,6 +11,8 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Fetch all history for all branches and tags
 
     - name: Set up Go
       uses: actions/setup-go@v4
@@ -23,10 +25,11 @@ jobs:
     - name: Test
       run: go test -v ./...
 
+    - name: Clean Git State
+      run: git reset --hard
+
     - name: Install GoReleaser
       run: curl -sL https://git.io/goreleaser | bash
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Run GoReleaser
       run: goreleaser release --rm-dist
