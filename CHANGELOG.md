@@ -1,0 +1,1 @@
+- V0.1.8: First version created with goreleaser + GHA
