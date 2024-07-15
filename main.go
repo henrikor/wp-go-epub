@@ -206,7 +206,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, v
 		sectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, sectionFileName, "")
 		logger.Printf("sectionID: %s\n", colorYellow(sectionID))
 
-		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, version, footnoteFileName, subheadingTypes...)
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), sectionID, e, cssPath, h, version, subheadingTypes...)
 
 		if sectionFootnotes != "" {
 			footnotesSectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/><h2>Footnotes</h2>%s`, cssPath, sectionFootnotes), "Footnotes", footnoteFileName, "")
@@ -215,7 +215,7 @@ func processContent(content string, e *epub.Epub, cssPath, headingType string, v
 	}
 }
 
-func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, version int, footnoteFileName string, subheadingTypes ...string) {
+func processSubsectionsRecursively(content string, parentSectionID string, e *epub.Epub, cssPath string, previousHeading string, version int, subheadingTypes ...string) {
 	if len(subheadingTypes) == 0 {
 		return
 	}
@@ -242,14 +242,14 @@ func processSubsectionsRecursively(content string, parentSectionID string, e *ep
 			logger.Printf("WARNING: SKIPPING: %s\n", h)
 		}
 
-		subsectionFileName := fmt.Sprintf("subsection_%d_%d.xhtml", parentSectionID, nr)
-		subFootnoteFileName := fmt.Sprintf("footnotes_subsection_%d_%d.xhtml", parentSectionID, nr)
+		subsectionFileName := fmt.Sprintf("subsection_%v_%d.xhtml", parentSectionID, nr)
+		subFootnoteFileName := fmt.Sprintf("footnotes_subsection_%v_%d.xhtml", parentSectionID, nr)
 		txt, sectionFootnotes := replaceFootnotes(txt, new(int), version, subFootnoteFileName)
 		appendTxt := getOnlyStartSection(txt)
 
 		subsectionID, _ := e.AddSubSection(parentSectionID, fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, appendTxt), h, subsectionFileName, "")
 		logger.Printf("subsectionID: %s\n", colorGreen(subsectionID))
-		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, version, subFootnoteFileName, remainingSubheadingTypes...)
+		processSubsectionsRecursively(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/>%s`, cssPath, txt), subsectionID, e, cssPath, h, version, remainingSubheadingTypes...)
 
 		if sectionFootnotes != "" {
 			footnotesSectionID, _ := e.AddSection(fmt.Sprintf(`<link rel="stylesheet" type="text/css" href="%s"/><h3>Footnotes</h3>%s`, cssPath, sectionFootnotes), "Footnotes", subFootnoteFileName, "")
