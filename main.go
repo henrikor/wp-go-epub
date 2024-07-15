@@ -365,7 +365,7 @@ func removePTags(input string) string {
 
 func removeBrElements(input string) string {
 	re := regexp.MustCompile(`(?i)<br\s*/?>`)
-	return re.ReplaceAllString(input, "")
+	return re.ReplaceAllString(input, " ")
 }
 
 func removeExtraLineBreaks(input string) string {
