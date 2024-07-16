@@ -333,10 +333,11 @@ func replaceFootnotes(input string, footnoteCount *int, version int, footnoteFil
 
 		if version >= 3 {
 			// EPUB 3 footnotes
+			footnotes.WriteString(fmt.Sprintf(`<aside id="%s" epub:type="footnote">%d: %s</aside>`, footnoteID, *footnoteCount-1, footnoteText))
 			return fmt.Sprintf(
 				`<sup><a href="%s#%s" epub:type="noteref" id="ref_%d">%d</a></sup>`,
-				footnoteFileName, footnoteID, *footnoteCount-1, *footnoteCount-1,
-			) + fmt.Sprintf(`<aside id="%s" epub:type="footnote">%s</aside>`, footnoteID, footnoteText)
+				footnoteFileName, footnoteID, *footnoteCount-1, *footnoteCount-1)
+
 		} else {
 			// EPUB 2 footnotes
 			footnotes.WriteString(fmt.Sprintf(`<p id="%s">%d: %s</p>`, footnoteID, *footnoteCount-1, footnoteText))
