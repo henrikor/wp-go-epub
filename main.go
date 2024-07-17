@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -24,7 +25,7 @@ var (
 )
 
 func main() {
-	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir, version := manageFlag()
+	author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir, version, kepub := manageFlag()
 	setupLogging(*logdir)
 
 	e, err := createEpub(*title, *author)
@@ -60,7 +61,12 @@ func main() {
 		logger.Fatalf("Error writing EPUB: %v", err)
 	}
 	logger.Println("EPUB created successfully.")
+
+	if *kepub {
+		convertToKEpub(epubFilePath)
+	}
 }
+
 func prepareContent(content string, removeBr bool) string {
 	ncontent := strings.Replace(content, "&nbsp;", " ", -1)
 	ncontent = removePTags(ncontent)
@@ -164,6 +170,9 @@ func createCSSFile() (string, error) {
 		}
 		a:hover {
 			text-decoration: underline;
+		}
+		aside[epub|type~='footnote'] {
+			display: none;
 		}
 	`
 	cssFilePath := "styles.css"
@@ -333,7 +342,7 @@ func replaceFootnotes(input string, footnoteCount *int, version int, footnoteFil
 
 		if version >= 3 {
 			// EPUB 3 footnotes
-			footnotes.WriteString(fmt.Sprintf(`<aside id="%s" epub:type="footnote">%d: %s</aside>`, footnoteID, *footnoteCount-1, footnoteText))
+			footnotes.WriteString(fmt.Sprintf(`<aside id="%s" epub:type="footnote"><p>%d: %s</p></aside>`, footnoteID, *footnoteCount-1, footnoteText))
 			return fmt.Sprintf(
 				`<sup><a href="%s#%s" epub:type="noteref" id="ref_%d">%d</a></sup>`,
 				footnoteFileName, footnoteID, *footnoteCount-1, *footnoteCount-1)
@@ -379,7 +388,7 @@ func removeHTMLTags(input string) string {
 	return re.ReplaceAllString(input, "")
 }
 
-func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool, *string, *int) {
+func manageFlag() (*string, *string, *string, *string, *string, *string, *string, *bool, *string, *int, *bool) {
 	author := flag.String("author", "", "the author of the EPUB")
 	title := flag.String("title", "", "the title of the EPUB")
 	wpFile := flag.String("wpfile", "", "the name of the file to be added as a section")
@@ -389,12 +398,22 @@ func manageFlag() (*string, *string, *string, *string, *string, *string, *string
 	headingType := flag.String("headingtype", "h2", "the type of heading to look for (e.g., h2, h3, h4)")
 	logdir := flag.String("logdir", "", "Path to the log directory")
 	removeBr := flag.Bool("br", false, "remove <br> elements from the content")
-	version := flag.Int("version", 2, "EPUB version (2 or 3)")
+	version := flag.Int("version", 3, "EPUB version (2 or 3)")
+	kepub := flag.Bool("kepub", false, "generate KEpub file")
 	flag.Parse()
 
 	if *author == "" || *title == "" || *wpFolder == "" || *wpFile == "" || *epubFolder == "" || *epubFile == "" || *logdir == "" {
 		flag.PrintDefaults()
 		os.Exit(1)
 	}
-	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir, version
+	return author, title, wpFile, epubFile, wpFolder, epubFolder, headingType, removeBr, logdir, version, kepub
+}
+
+func convertToKEpub(epubFilePath string) {
+	cmd := exec.Command("./kepubify", epubFilePath)
+	err := cmd.Run()
+	if err != nil {
+		logger.Fatalf("Error converting to KEpub: %v", err)
+	}
+	logger.Println("KEpub conversion completed successfully.")
 }

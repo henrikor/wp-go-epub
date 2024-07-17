@@ -13,7 +13,11 @@ This is the Go app which converts the wp post to epub. It created Table of Conte
 # wp-go-epub
 Go app to take wordpress post code, and convert to ePub
 
-rm -rf test01.epub; rm -rf EPUB
+## Convert to kepub:
+To get popup footnotes to be working on Kobo readers, we must convert to kepub (using -kepub flag). This requires that you download kepubify from: https://pgaskin.net/kepubify/dl/, renames the binary to "kepubify", set x bit on it (ie: "chmod 755 kepubify"), and keep that file in same folder as the wp-go-epub binary.
 
-go run main.go -author "Hingle McCringleberry" -title "My EPUB" -epubfile "test01.epub" -epubfolder . -wpfile test.html -wpfolder . -logdir ./log
+Example of using:
+go run main.go -author "Proletarian Perspectives" -title "Party theory" -epubfile "test03.epub" -epubfolder . -wpfile ../tmp/test02.html -wpfolder . -logdir ./log -br -kepub
+
+## Check epub:
 java -jar epubcheck-4.2.5/epubcheck.jar ./test01.epub
