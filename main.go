@@ -419,7 +419,7 @@ func convertToKEpub(epubFilePath string) {
 
 	// Lag hele kommandoen for kepubify
 	kepubifyPath := filepath.Join(exeDir, "kepubify")
-	cmd := exec.Command(kepubifyPath, epubFilePath)
+	cmd := exec.Command(kepubifyPath, "-i", epubFilePath)
 	err = cmd.Run()
 	if err != nil {
 		logger.Fatalf("Error converting to KEpub: %v", err)
