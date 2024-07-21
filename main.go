@@ -410,8 +410,17 @@ func manageFlag() (*string, *string, *string, *string, *string, *string, *string
 }
 
 func convertToKEpub(epubFilePath string) {
-	cmd := exec.Command("./kepubify", epubFilePath)
-	err := cmd.Run()
+	// Finn den absolutte stien til kjørbar filen
+	exePath, err := os.Executable()
+	if err != nil {
+		logger.Fatalf("Error finding executable path: %v", err)
+	}
+	exeDir := filepath.Dir(exePath)
+
+	// Lag hele kommandoen for kepubify
+	kepubifyPath := filepath.Join(exeDir, "kepubify")
+	cmd := exec.Command(kepubifyPath, epubFilePath)
+	err = cmd.Run()
 	if err != nil {
 		logger.Fatalf("Error converting to KEpub: %v", err)
 	}
