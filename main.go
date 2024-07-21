@@ -419,7 +419,12 @@ func convertToKEpub(epubFilePath string) {
 
 	// Lag hele kommandoen for kepubify
 	kepubifyPath := filepath.Join(exeDir, "kepubify")
-	cmd := exec.Command(kepubifyPath, "-i", epubFilePath)
+
+	// Legg til flagget -i for å unngå _converted-suffikset
+	// og bruk -o for å spesifisere output-filen
+	outputFilePath := strings.TrimSuffix(epubFilePath, ".epub") + ".kepub.epub"
+
+	cmd := exec.Command(kepubifyPath, "-i", "-o", outputFilePath, epubFilePath)
 	err = cmd.Run()
 	if err != nil {
 		logger.Fatalf("Error converting to KEpub: %v", err)
